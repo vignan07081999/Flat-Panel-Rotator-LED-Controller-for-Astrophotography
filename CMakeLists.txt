@@ -1,24 +1,14 @@
-cmake_minimum_required(VERSION 3.0)
-project(flatfield_driver)
+cmake_minimum_required(VERSION 3.10)  # Adjust version as needed
+project(indi_flatfield)
 
 # Find the INDI library
 find_package(INDI REQUIRED)
 
-# Include INDI headers
-include_directories(${INDI_INCLUDE_DIRS})
-
 # Add the executable
-add_executable(flatfield_driver flatfield_driver.cpp)
+add_executable(indi_flatfield indi_flatfield.cpp)
 
 # Link against the INDI library
-target_link_libraries(flatfield_driver ${INDI_LIBRARIES})
+target_link_libraries(indi_flatfield ${INDI_LIBRARIES})
 
-# Install the driver (optional, but recommended)
-install(TARGETS flatfield_driver DESTINATION lib/indi)
-
-# Create an XML file for the driver (important for INDI to recognize it)
-configure_file(
-    flatfield_driver.xml.in
-    ${CMAKE_BINARY_DIR}/flatfield_driver.xml
-)
-install(FILES ${CMAKE_BINARY_DIR}/flatfield_driver.xml DESTINATION share/indi)
+# Install the driver
+install(TARGETS indi_flatfield DESTINATION lib/indi)
