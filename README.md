@@ -62,7 +62,7 @@ The circuit includes connections for:
 ### **2. INDI Driver (Linux/StellarMate)**
 1. Open a terminal & run:
    ```bash
-   git clone https://github.com/yourusername/FlatPanelController.git
+   git clone https://github.com/vignan07081999/Flat-Panel-Rotator-LED-Controller-for-Astrophotography.git
    cd FlatPanelController/INDI
    mkdir build && cd build
    cmake ..
@@ -79,7 +79,7 @@ The circuit includes connections for:
 1. Install **ASCOM Platform**
 2. Clone the repo & build:
    ```powershell
-   git clone https://github.com/yourusername/FlatPanelController.git
+   git clone https://github.com/vignan07081999/Flat-Panel-Rotator-LED-Controller-for-Astrophotography.git
    cd FlatPanelController/ASCOM
    ```
 3. Open the `.csproj` file in **Visual Studio**, build & register the driver
@@ -88,7 +88,7 @@ The circuit includes connections for:
 ### **4. Windows GUI Application**
 1. Clone the repo:
    ```powershell
-   git clone https://github.com/yourusername/FlatPanelController.git
+   git clone https://github.com/vignan07081999/Flat-Panel-Rotator-LED-Controller-for-Astrophotography.git
    ```
 2. Open `FlatPanelControl.csproj` in **Visual Studio**
 3. Build the project & run `FlatPanelControl.exe`
