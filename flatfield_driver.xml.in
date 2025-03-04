@@ -1,0 +1,6 @@
+<driversList>
+    <indidriver name="FlatField">
+        <driver name="FlatField">flatfield_driver</driver>
+        <version>1.0</version>
+    </indidriver>
+</driversList>
