@@ -1,4 +1,4 @@
-/home/stellarmate/Projects/indi/cmake_modules/FindINDI.cmake# Compiler and flags
+# Compiler and flags
 CXX := g++
 CXXFLAGS := -Wall -Wextra -std=c++11 -g -fPIC
 
@@ -9,7 +9,7 @@ INDI_LIBS := -lindi -lpthread -lm -ludev
 # Source files
 SRC := indi_flatfield.cpp
 
-# Object files (Corrected: derive .o from .cpp)
+# Object files
 OBJ := $(SRC:.cpp=.o)
 
 # Output driver name
@@ -17,7 +17,7 @@ DRIVER := indi_flatfield
 
 all: $(DRIVER)
 
-# Compile object files (Corrected: use automatic variables)
+# Compile object files
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INDI_INCLUDE) -c $< -o $@
 
