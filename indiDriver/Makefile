@@ -2,14 +2,14 @@
 CXX := g++
 CXXFLAGS := -Wall -Wextra -std=c++11 -g -fPIC
 
-# INDI include and library paths (you might need to adjust these!)
+# INDI include and library paths
 INDI_INCLUDE := $(shell indiserver -v 2>&1 | grep "Driver search path" | awk '{print $4}' | sed 's/"//g' | sed 's/,/ /g' | awk '{ for (i=1; i<=NF; i++) print "-I"$i"/include/libindi"}')
 INDI_LIBS := -lindi -lpthread -lm -ludev
 
 # Source files
 SRC := indi_flatfield.cpp
 
-# Object files
+# Object files (Corrected: derive .o from .cpp)
 OBJ := $(SRC:.cpp=.o)
 
 # Output driver name
@@ -17,7 +17,7 @@ DRIVER := indi_flatfield
 
 all: $(DRIVER)
 
-# Compile object files
+# Compile object files (Corrected: use automatic variables)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INDI_INCLUDE) -c $< -o $@
 
