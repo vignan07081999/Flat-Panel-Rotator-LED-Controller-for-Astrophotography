@@ -1,9 +1,9 @@
-# Compiler and flags
+/home/stellarmate/Projects/indi/cmake_modules/FindINDI.cmake# Compiler and flags
 CXX := g++
 CXXFLAGS := -Wall -Wextra -std=c++11 -g -fPIC
 
 # INDI include and library paths
-INDI_INCLUDE := $(shell indiserver -v 2>&1 | grep "Driver search path" | awk '{print $4}' | sed 's/"//g' | sed 's/,/ /g' | awk '{ for (i=1; i<=NF; i++) print "-I"$i"/include/libindi"}')
+INDI_INCLUDE := $(shell indiserver -v 2>&1 | grep "/home/stellarmate/Projects/indi/cmake_modules/FindINDI.cmake" | awk '{print $4}' | sed 's/"//g' | sed 's/,/ /g' | awk '{ for (i=1; i<=NF; i++) print "-I"$i"/include/libindi"}')
 INDI_LIBS := -lindi -lpthread -lm -ludev
 
 # Source files
