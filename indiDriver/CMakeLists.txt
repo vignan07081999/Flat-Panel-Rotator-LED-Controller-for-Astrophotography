@@ -11,6 +11,7 @@ list(APPEND CMAKE_MODULE_PATH
     /usr/lib/x86_64-linux-gnu/cmake/Modules # Possible location on some systems
     /usr/local/lib/cmake/indi #Less Common Location
     /opt/indi/cmake/Modules
+    /home/stellarmate/Projects/indi/cmake_modules/FindINDI.cmake
 )
 
 find_package(INDI REQUIRED)
