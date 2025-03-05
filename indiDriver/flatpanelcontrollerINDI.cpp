@@ -1,13 +1,23 @@
-#include <memory>
-#include <indicom.h>
-#include <indidevapi.h>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <vector>
+#include <cstring>
+#include <cstdarg>
+#include <cerrno>
+#include <cstdlib> // For atexit()
+
+// Serial Port Headers
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <string.h>
-#include <libudev.h> // For dynamic serial port detection
+#include <sys/types.h>
+#include <sys/stat.h>
+
+// INDI Headers
+#include <libindi/indicom.h>
+#include <libindi/indidevapi.h>
 
 class INDIFlatField : public INDI::DefaultDriver {
 public:
@@ -27,65 +37,61 @@ public:
     const char *getDefaultName() { return "FlatField"; };
 
 private:
-    int fd;
-    bool connected;
+    int fd = -1; // Serial port file descriptor
+    bool connected = false;
 
     ISwitchVectorProperty *connection_prop;
     INumberVectorProperty *servo_prop;
-    double target_servo_pos;
-    double current_servo_pos;
+    double target_servo_pos = 90;
+    double current_servo_pos = 90;
     INumberVectorProperty *led_prop;
-    double target_led_brightness;
-    double current_led_brightness;
+    double target_led_brightness = 0;
+    double current_led_brightness = 0;
 
-    // --- Serial Port Selection ---
-    ITextVectorProperty *port_prop; // Property for port selection
+    ITextVectorProperty *port_prop;  //Port selection
     std::string selectedPort;     // Store the selected port
+
 
     bool openSerialPort();
     void closeSerialPort();
     bool sendCommand(const char *command);
     bool readFeedback();
     void log(const char *format, ...);
-    std::string findSerialPort(); // Function to dynamically find the port
+    std::string findSerialPort();
 };
 
 INDIFlatField::INDIFlatField() {
-    fd = -1;
-    connected = false;
-    target_servo_pos = 90;
-    current_servo_pos = 90;
-    target_led_brightness = 0;
-    current_led_brightness = 0;
-    selectedPort = ""; // Initialize to empty string
     setVersion(1, 0);
+    selectedPort = "";
+    // Register a cleanup function to close the serial port on exit
+     atexit([]() {
+        if (driver) {
+            driver->Disconnect(); // Cleanly disconnect if possible
+        }
+    });
 }
-
 INDIFlatField::~INDIFlatField() {}
 
 bool INDIFlatField::ISGetProperties(const char *dev) {
     INDI::DefaultDriver::ISGetProperties(dev);
 
-    // Connection Property
     static ISwitch connection_switch[] = {
         {const_cast<char *>("CONNECT"),   "Connect",   ISS_OFF},
         {const_cast<char *>("DISCONNECT"), "Disconnect", ISS_ON}
     };
     connection_prop = newSwitch(&connection_switch, 2, getDeviceName(), "CONNECTION", IP_RW, ISRule::ONE_OF_MANY, 60, IPS_IDLE);
 
-    // Servo Position Property
     static INumber servo_numbers[] = {
         {const_cast<char *>("SERVO_POS"), "Position", "%.1f", 0, 180, 1, 90},
     };
     servo_prop = newNumber(&servo_numbers, 1, getDeviceName(), "SERVO", IP_RW, 0, IPS_IDLE);
 
-    // LED Brightness Property
     static INumber led_numbers[] = {
         {const_cast<char *>("LED_BRIGHT"), "Brightness", "%.0f", 0, 255, 1, 0},
     };
     led_prop = newNumber(&led_numbers, 1, getDeviceName(), "LED", IP_RW, 0, IPS_IDLE);
 
-    // Serial Port Selection Property
+     // Serial Port Selection Property
     static IText port_texts[] = {
         {const_cast<char *>("PORT"), "Port", const_cast<char *>(""),} // Will be filled dynamically
     };
@@ -94,8 +100,7 @@ bool INDIFlatField::ISGetProperties(const char *dev) {
     defineSwitch(connection_prop);
     defineNumber(servo_prop);
     defineNumber(led_prop);
-    defineText(port_prop); // Define the port selection property
-
+    defineText(port_prop);
     return true;
 }
 
@@ -159,12 +164,13 @@ bool INDIFlatField::ISNewNumber(const char *dev, const char *name, double values
     return INDI::DefaultDriver::ISNewNumber(dev, name, values, names, n);
 }
 
-bool INDIFlatField::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) {
+bool INDIFlatField::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
+{
     if (strcmp(name, port_prop->name) == 0) {
         IUFillText(port_prop, texts, names, n);
         selectedPort = port_prop->tp[0].text; // Store the selected port
         port_prop->s = IPS_OK;
-        IDSetText(port_prop, nullptr);
+        IDSetText(port_prop, nullptr); //inform client
         return true;
     }
     return INDI::DefaultDriver::ISNewText(dev, name, texts, names, n);
@@ -173,14 +179,14 @@ bool INDIFlatField::ISNewText(const char *dev, const char *name, char *texts[], 
 bool INDIFlatField::ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *names[], int n) {
     return INDI::DefaultDriver::ISNewBLOB(dev, name, sizes, blobsizes, blobs, names, n);
 }
-
-bool INDIFlatField::ISSnoopDevice(XMLEle *root) {
+bool INDIFlatField::ISSnoopDevice(XMLEle *root)
+{
     return INDI::DefaultDriver::ISSnoopDevice(root);
 }
 
 bool INDIFlatField::UpdateProperties() {
     INDI::DefaultDriver::UpdateProperties();
-     // Add dynamic port list update *before* connecting
+    // Add dynamic port list update *before* connecting
     if (isConnected() == false) {
         std::string foundPort = findSerialPort();
         if (!foundPort.empty()) {
@@ -202,13 +208,13 @@ void INDIFlatField::TimerHit() {
 }
 
 bool INDIFlatField::Connect() {
-    if (selectedPort.empty()) { // Use the selected port
+   if (selectedPort.empty()) { // Use the selected port
         log("No serial port selected.");
         return false;
     }
 
     if (!openSerialPort()) {
-        log("Failed to open serial port: %s", selectedPort.c_str());
+      log("Failed to open serial port: %s", selectedPort.c_str());
         connected = false;
         return false;
     }
@@ -227,12 +233,12 @@ bool INDIFlatField::Disconnect() {
     closeSerialPort();
     connected = false;
     log("Device disconnected.");
-    IDSetSwitch(connection_prop, nullptr);
+     IDSetSwitch(connection_prop, nullptr); //inform client of changes
     return true;
 }
 
 bool INDIFlatField::openSerialPort() {
-     fd = ::open(selectedPort.c_str(), O_RDWR | O_NOCTTY | O_NDELAY); // Use selectedPort
+    fd = ::open(selectedPort.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd == -1) {
         return false;
     }
@@ -251,8 +257,8 @@ bool INDIFlatField::openSerialPort() {
     options.c_cc[VMIN] = 0;
     options.c_cc[VTIME] = 0;
     tcsetattr(fd, TCSANOW, &options);
-    sleep(2);
-    tcflush(fd, TCIOFLUSH);
+    sleep(2); //wait for initialization
+    tcflush(fd, TCIOFLUSH); //flush
     return true;
 }
 
@@ -301,7 +307,7 @@ bool INDIFlatField::readFeedback() {
         log("Error reading from serial port: %s", strerror(errno));
         closeSerialPort();
         connected = false;
-        if (Connect())
+         if (Connect())
             log("Reconnected after the error");
         return false;
     }
@@ -358,7 +364,6 @@ std::string INDIFlatField::findSerialPort() {
     udev_unref(udev);
     return foundPort;
 }
-
 // --- INDI Driver Registration ---
 static INDIFlatField *driver = nullptr;
 extern "C" {
