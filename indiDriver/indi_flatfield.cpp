@@ -15,26 +15,27 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-// INDI Headers
-#include <libindi/indicom.h>
-#include <libindi/indidevapi.h>
+// INDI Header
+#include <indi.h>  // Corrected include for driver development
+#include <libudev.h> //for dynamic port detection
 
 class INDIFlatField : public INDI::DefaultDriver {
 public:
     INDIFlatField();
     ~INDIFlatField();
 
-    bool ISGetProperties(const char *dev);
-    bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n);
-    bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n);
-    bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n);
-    bool ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *names[], int n);
-    bool ISSnoopDevice(XMLEle *root);
-    bool UpdateProperties();
-    void TimerHit();
-    bool Connect();
-    bool Disconnect();
-    const char *getDefaultName() { return "FlatField"; };
+    // Corrected: No return type in declarations (they are virtual void)
+    void ISGetProperties(const char *dev) override; // Use override for clarity and safety
+    void ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
+    void ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
+    void ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
+    void ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *names[], int n) override;
+    void ISSnoopDevice(XMLEle *root) override;
+    bool UpdateProperties() override; // Member functions can return values
+    void TimerHit() override;
+    bool Connect() override;
+    bool Disconnect() override;
+    const char *getDefaultName()  { return "FlatField"; };
 
 private:
     int fd = -1; // Serial port file descriptor
@@ -63,16 +64,11 @@ private:
 INDIFlatField::INDIFlatField() {
     setVersion(1, 0);
     selectedPort = "";
-    // Register a cleanup function to close the serial port on exit
-     atexit([]() {
-        if (driver) {
-            driver->Disconnect(); // Cleanly disconnect if possible
-        }
-    });
+    // We will establish connection in Connect() function
 }
 INDIFlatField::~INDIFlatField() {}
 
-bool INDIFlatField::ISGetProperties(const char *dev) {
+void INDIFlatField::ISGetProperties(const char *dev) {
     INDI::DefaultDriver::ISGetProperties(dev);
 
     static ISwitch connection_switch[] = {
@@ -101,10 +97,10 @@ bool INDIFlatField::ISGetProperties(const char *dev) {
     defineNumber(servo_prop);
     defineNumber(led_prop);
     defineText(port_prop);
-    return true;
+
 }
 
-bool INDIFlatField::ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) {
+void INDIFlatField::ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) {
     if (strcmp(name, connection_prop->name) == 0) {
         IUFillSwitch(connection_prop, states, names, n);
         connection_prop->s = IPS_OK;
@@ -126,12 +122,12 @@ bool INDIFlatField::ISNewSwitch(const char *dev, const char *name, ISState *stat
             }
         }
         IDSetSwitch(connection_prop, nullptr);
-        return true;
+        return; //MUST have return
     }
-    return INDI::DefaultDriver::ISNewSwitch(dev, name, states, names, n);
+     INDI::DefaultDriver::ISNewSwitch(dev, name, states, names, n);
 }
 
-bool INDIFlatField::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) {
+void INDIFlatField::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) {
     if (strcmp(name, servo_prop->name) == 0) {
         IUFillNumber(servo_prop, values, names, n);
         target_servo_pos = servo_prop->np[0].value;
@@ -145,7 +141,7 @@ bool INDIFlatField::ISNewNumber(const char *dev, const char *name, double values
             }
         }
         IDSetNumber(servo_prop, nullptr);
-        return true;
+        return; //MUST have return
     } else if (strcmp(name, led_prop->name) == 0) {
         IUFillNumber(led_prop, values, names, n);
         target_led_brightness = led_prop->np[0].value;
@@ -159,29 +155,29 @@ bool INDIFlatField::ISNewNumber(const char *dev, const char *name, double values
             }
         }
         IDSetNumber(led_prop, nullptr);
-        return true;
+        return; //MUST have return
     }
-    return INDI::DefaultDriver::ISNewNumber(dev, name, values, names, n);
+     INDI::DefaultDriver::ISNewNumber(dev, name, values, names, n);
 }
 
-bool INDIFlatField::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
+void INDIFlatField::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
 {
     if (strcmp(name, port_prop->name) == 0) {
         IUFillText(port_prop, texts, names, n);
         selectedPort = port_prop->tp[0].text; // Store the selected port
         port_prop->s = IPS_OK;
         IDSetText(port_prop, nullptr); //inform client
-        return true;
+        return; //MUST have return
     }
-    return INDI::DefaultDriver::ISNewText(dev, name, texts, names, n);
+     INDI::DefaultDriver::ISNewText(dev, name, texts, names, n);
 }
 
-bool INDIFlatField::ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *names[], int n) {
-    return INDI::DefaultDriver::ISNewBLOB(dev, name, sizes, blobsizes, blobs, names, n);
+void INDIFlatField::ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[], char *names[], int n) {
+    INDI::DefaultDriver::ISNewBLOB(dev, name, sizes, blobsizes, blobs, names, n);
 }
-bool INDIFlatField::ISSnoopDevice(XMLEle *root)
+void INDIFlatField::ISSnoopDevice(XMLEle *root)
 {
-    return INDI::DefaultDriver::ISSnoopDevice(root);
+    INDI::DefaultDriver::ISSnoopDevice(root);
 }
 
 bool INDIFlatField::UpdateProperties() {
@@ -365,16 +361,8 @@ std::string INDIFlatField::findSerialPort() {
     return foundPort;
 }
 // --- INDI Driver Registration ---
-static INDIFlatField *driver = nullptr;
-extern "C" {
-    INDI_DRIVER_MAIN
-    {
-        if(driver == nullptr) //check if object exist
-        {
-            driver = new INDIFlatField();
-        }
-        driver->setVersion(1, 0);
-        driver->registerDriver(argc, argv);
-        return 0;
-    }
+extern "C" int indi_init(void) {
+    static INDIFlatField driver;
+    driver.setVersion(1, 0);
+    return 0;
 }
