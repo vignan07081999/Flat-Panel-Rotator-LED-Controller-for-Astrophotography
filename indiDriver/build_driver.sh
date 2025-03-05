@@ -1,43 +1,61 @@
 #!/bin/bash
 
-# Check if required packages are installed
-if ! command -v cmake &> /dev/null; then
-    echo "cmake is not installed.  Installing..."
-    sudo apt-get update
-    sudo apt-get install -y cmake
-fi
+set -e  # Exit immediately if a command exits with a non-zero status
 
-if ! dpkg -s libindi-dev &> /dev/null; then
-    echo "libindi-dev is not installed.  Installing..."
-    sudo apt-get update
-    sudo apt-get install -y libindi-dev
-fi
+echo "Starting build process for INDI FlatField driver..."
 
-if ! dpkg -s libudev-dev &> /dev/null; then
-    echo "libudev-dev is not installed.  Installing..."
-    sudo apt-get update
-    sudo apt-get install -y libudev-dev
-fi
+# --- Dependency Checks (Robust) ---
 
-# Create build directory if it doesn't exist
-if [ ! -d "build" ]; then
-  mkdir build
-fi
+check_package() {
+    local package_name=$1
+    echo "Checking for $package_name..."
+    if ! dpkg -s "$package_name" &> /dev/null; then
+        echo "$package_name is not installed or in a bad state. Attempting to install/reinstall..."
+        sudo apt-get update
+        sudo apt-get install --reinstall -y "$package_name"
+        if ! dpkg -s "$package_name" &> /dev/null; then  # Double-check after install
+             echo "ERROR: Failed to install/reinstall $package_name.  Exiting."
+             exit 1
+        fi
 
-# Change to build directory
+    else
+        echo "$package_name is installed."
+    fi
+}
+check_package cmake
+check_package libindi-dev
+check_package libudev-dev
+
+# --- Clean Build ---
+echo "Cleaning up previous build (if any)..."
+rm -rf build
+
+# --- Create Build Directory ---
+echo "Creating build directory..."
+mkdir build
 cd build
 
-# Run CMake
+# --- Run CMake ---
+echo "Running CMake..."
 cmake ..
+if [ $? -ne 0 ]; then
+    echo "ERROR: CMake failed.  Exiting."
+    exit 1
+fi
 
-# Compile the driver
+# --- Compile the Driver ---
+echo "Compiling the driver..."
 make
-
-# Install the driver
+if [ $? -ne 0 ]; then
+    echo "ERROR: Compilation failed.  Exiting."
+    exit 1
+fi
+# --- Install the Driver ---
+echo "Installing the driver..."
 sudo make install
-
-# Clean up (optional - removes the build directory)
-# cd ..
-# rm -rf build
+if [ $? -ne 0 ]; then
+    echo "ERROR: Installation failed.  Exiting."
+    exit 1
+fi
 
 echo "Driver built and installed successfully!"
