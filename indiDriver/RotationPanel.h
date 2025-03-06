@@ -1,7 +1,8 @@
 #ifndef ROTATION_PANEL_H
 #define ROTATION_PANEL_H
 
-#include <indi/indicom.h> // Corrected include  // For serial communication
+#include <indi/indicom.h>  // Corrected include
+#include <indi/indibase.h> //Add indibase.h import
 
 class RotationPanel : public INDI::DefaultDevice
 {
@@ -19,7 +20,7 @@ public:
 private:
     INDI::NumberVectorProperty servoPositionNP;
     INDI::NumberVectorProperty ledBrightnessNP;
-    
+
     INDI::Connection *connection; // Serial port connection
     char portName[64];
     bool isConnected;
@@ -27,6 +28,7 @@ private:
     bool sendCommand(const char *command);
     bool receiveResponse(char *buffer, size_t bufferSize, int timeout_ms = 500);
     void updatePropertyStates(); // Update INDI property states (IU_IDLE, IU_BUSY, etc)
+    void logError(const std::string& message); //Add error log function
 };
 
 #endif // ROTATION_PANEL_H
