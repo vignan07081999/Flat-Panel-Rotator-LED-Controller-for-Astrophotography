@@ -5,13 +5,12 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- INDI Configuration (Manual) ---
-# REPLACE THESE with the actual paths you found!
-set(INDI_INCLUDE_DIR "/usr/include")  # Example: /usr/include or /usr/local/include
-set(INDI_LIBRARIES indi indidriver)    # Main INDI library
-set(INDI_LIBRARY_DIR "/usr/lib")    # Example/usr/lib
+set(INDI_INCLUDE_DIR "/usr/include")  # Should be correct now
+set(INDI_LIBRARIES indi indidriver)
+set(INDI_LIBRARY_DIR "/usr/lib") #or /usr/lib/arm-linux-gnueabihf
 
 # --- Qt5 Configuration ---
-# Qt5's find_package should still work fine.
+set(Qt5SerialPort_DIR "/usr/lib/arm-linux-gnueabihf/cmake/Qt5SerialPort")  # EXAMPLE!  Use the correct path
 find_package(Qt5Core REQUIRED)
 find_package(Qt5SerialPort REQUIRED)
 
@@ -34,7 +33,6 @@ include_directories(
 add_executable(indi_rotationpanel RotationPanel.cpp)
 
 # --- Link Libraries ---
-#Important: we need to specify the library directory.
 link_directories(${INDI_LIBRARY_DIR})
 target_link_libraries(indi_rotationpanel
     ${INDI_LIBRARIES}
