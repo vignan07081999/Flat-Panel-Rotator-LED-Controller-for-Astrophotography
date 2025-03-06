@@ -5,188 +5,217 @@ import serial.tools.list_ports
 import threading
 import time
 
-class FlatFieldApp:
+class FlatFieldGUI:
     def __init__(self, master):
         self.master = master
-        master.title("Flat Field Controller (Alnitak Emulation)")
+        master.title("Flat Field Panel Control")
 
-        self.serial_port = None
-        self.serial_connected = False
+        # --- Serial Port Configuration ---
+        self.port = None
+        self.serialInst = serial.Serial()
 
-        # --- GUI Elements ---
+        # --- Serial Port Selection ---
+        self.port_label = tk.Label(master, text="Select Serial Port:")
+        self.port_label.grid(row=0, column=0, sticky=tk.W)
 
-        # Port Selection
-        self.port_label = tk.Label(master, text="Select Port:")
-        self.port_label.grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.port_combobox = ttk.Combobox(master, values=self.get_serial_ports())
+        self.port_combobox.grid(row=0, column=1, sticky=tk.W+tk.E)
+        self.port_combobox.bind("<<ComboboxSelected>>", self.connect_serial)
 
-        self.port_combo = ttk.Combobox(master, values=[], state="readonly")
-        self.port_combo.grid(row=0, column=1, padx=5, pady=5)
-        self.port_combo.bind("<<ComboboxSelected>>", self.connect_serial)
+        self.connect_button = tk.Button(master, text="Connect", command=self.connect_serial)
+        self.connect_button.grid(row=0, column=2)
 
-        self.refresh_button = tk.Button(master, text="Refresh Ports", command=self.refresh_ports)
-        self.refresh_button.grid(row=0, column=2, padx=5, pady=5)
+        # --- Servo Control ---
+        self.servo_label = tk.Label(master, text="Servo Position (0-180):")
+        self.servo_label.grid(row=1, column=0, sticky=tk.W)
 
-        # Brightness Control (0-255)
-        self.brightness_label = tk.Label(master, text="Brightness (0-255):")
-        self.brightness_label.grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.servo_var = tk.IntVar()
+        self.servo_scale = tk.Scale(master, from_=0, to=180, orient=tk.HORIZONTAL,
+                                     variable=self.servo_var)  # Removed command here
+        self.servo_scale.grid(row=1, column=1, sticky=tk.W+tk.E)
 
-        self.brightness_slider = tk.Scale(master, from_=0, to=255, orient=tk.HORIZONTAL, command=self.update_brightness_display)
-        self.brightness_slider.grid(row=1, column=1, padx=5, pady=5)
+        self.servo_send_button = tk.Button(master, text="Send Servo", command=lambda: self.send_servo_command(self.servo_var.get()))
+        self.servo_send_button.grid(row=1, column=2)
 
-        self.brightness_value_label = tk.Label(master, text="0")
-        self.brightness_value_label.grid(row=1, column=2, sticky=tk.W, padx=5, pady=5)
+        self.servo_feedback_label = tk.Label(master, text="Last Servo Pos: N/A")
+        self.servo_feedback_label.grid(row=2, column=0, columnspan=3, sticky=tk.W)
 
-        self.brightness_button = tk.Button(master, text="Set Brightness", command=self.send_brightness_command)
-        self.brightness_button.grid(row=1, column=3, padx=5, pady=5)
 
-        # Cover Control (Open/Close/Halt)
-        self.open_button = tk.Button(master, text="Open Cover", command=self.open_cover)
-        self.open_button.grid(row=2, column=0, padx=5, pady=5)
+        # --- Servo Presets ---
+        self.servo_preset_frame = tk.Frame(master)
+        self.servo_preset_frame.grid(row=3, column=0, columnspan=3, pady=5)
 
-        self.close_button = tk.Button(master, text="Close Cover", command=self.close_cover)
-        self.close_button.grid(row=2, column=1, padx=5, pady=5)
+        self.servo_open_button = tk.Button(self.servo_preset_frame, text="Open (0)", command=lambda: self.send_servo_command(0))
+        self.servo_open_button.pack(side=tk.LEFT, padx=5)
 
-        self.halt_button = tk.Button(master, text="Halt Cover", command=self.halt_cover)
-        self.halt_button.grid(row=2, column=2, padx=5, pady=5)
+        self.servo_close_button = tk.Button(self.servo_preset_frame, text="Close (180)", command=lambda: self.send_servo_command(180))
+        self.servo_close_button.pack(side=tk.LEFT, padx=5)
 
-        # Status Display
-        self.status_label = tk.Label(master, text="Status:")
-        self.status_label.grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
 
-        self.status_text = tk.Text(master, height=2, width=30)
-        self.status_text.grid(row=3, column=1, columnspan=3, padx=5, pady=5)
-        self.status_text.config(state=tk.DISABLED)
+        # --- LED Control ---
+        self.led_label = tk.Label(master, text="LED Brightness (0-255):")
+        self.led_label.grid(row=4, column=0, sticky=tk.W)
 
-        # Log Display
+        self.led_var = tk.IntVar()
+        self.led_scale = tk.Scale(master, from_=0, to=255, orient=tk.HORIZONTAL,
+                                   variable=self.led_var) # Removed command
+        self.led_scale.grid(row=4, column=1, sticky=tk.W+tk.E)
+
+        self.led_send_button = tk.Button(master, text="Send LED", command=lambda: self.send_led_command(self.led_var.get()))
+        self.led_send_button.grid(row=4, column=2)
+
+        self.led_feedback_label = tk.Label(master, text="Last LED Brightness: N/A")
+        self.led_feedback_label.grid(row=5, column=0, columnspan=3, sticky=tk.W)
+
+
+        # --- LED Presets ---
+        self.led_preset_frame = tk.Frame(master)
+        self.led_preset_frame.grid(row=6, column=0, columnspan=3, pady=5)
+
+        self.led_full_button = tk.Button(self.led_preset_frame, text="Full", command=lambda: self.send_led_command(255))
+        self.led_full_button.pack(side=tk.LEFT, padx=5)
+
+        self.led_half_button = tk.Button(self.led_preset_frame, text="Half", command=lambda: self.send_led_command(128))
+        self.led_half_button.pack(side=tk.LEFT, padx=5)
+
+        self.led_off_button = tk.Button(self.led_preset_frame, text="Off", command=lambda: self.send_led_command(0))
+        self.led_off_button.pack(side=tk.LEFT, padx=5)
+
+
+        # --- Status Label ---
+        self.status_label = tk.Label(master, text="Disconnected", fg="red")
+        self.status_label.grid(row=7, column=0, columnspan=3)
+
+        # --- Log Window ---
         self.log_label = tk.Label(master, text="Log:")
-        self.log_label.grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        self.log_label.grid(row=8, column=0, sticky=tk.W)
 
-        self.log_text = tk.Text(master, height=5, width=50)
-        self.log_text.grid(row=4, column=1, columnspan=3, padx=5, pady=5)
-        self.log_text.config(state=tk.DISABLED)
+        self.log_text = tk.Text(master, height=10, width=50)
+        self.log_text.grid(row=9, column=0, columnspan=3, sticky=tk.W+tk.E)
+        self.log_text.config(state=tk.DISABLED)  # Make it read-only
 
-        # --- Initialize ---
-        self.refresh_ports()
-        self.brightness_slider.set(0)  # Set initial brightness
+        # --- Serial Read Thread ---
+        self.receive_thread = threading.Thread(target=self.receive_data, daemon=True)
+        self.receive_thread_running = False
 
-        # Start the serial read thread
-        self.read_thread = threading.Thread(target=self.read_serial, daemon=True)
-        self.read_thread.start()
+        # Configure grid weights for resizing
+        master.grid_columnconfigure(1, weight=1)
+        master.grid_rowconfigure(9, weight=1)
 
 
-    def refresh_ports(self):
-        ports = [port.device for port in serial.tools.list_ports.comports()]
-        self.port_combo['values'] = ports
-        if ports:
-            self.port_combo.current(0)
-            self.connect_serial() #attempt autoconnect
-        else:
-            self.log_message("No serial ports found.")
+
+    def get_serial_ports(self):
+        ports = serial.tools.list_ports.comports()
+        return [port.device for port in ports]
 
     def connect_serial(self, event=None):
-        selected_port = self.port_combo.get()
-        if self.serial_connected:
-            self.serial_port.close()
-            self.serial_connected = False
+        if self.serialInst.is_open:
+            self.serialInst.close()
+            self.status_label.config(text="Disconnected", fg="red")
+            self.connect_button.config(text="Connect")
+            self.receive_thread_running = False
+            return
+
+        selected_port = self.port_combobox.get()
+        if not selected_port:
+            return
+
         try:
-            self.serial_port = serial.Serial(selected_port, 115200, timeout=1)
-            self.serial_connected = True
-            self.log_message(f"Connected to {selected_port}")
-            # Request initial status after connecting
-            self.send_command("I\r")  #initialize
+            self.serialInst = serial.Serial(port=selected_port, baudrate=9600, timeout=1)
+            self.log_message(f"Connecting to {selected_port}...")
+            self.status_label.config(text=f"Connected to {selected_port}", fg="green")
+            self.connect_button.config(text="Disconnect")
+            self.receive_thread_running = True
+            self.receive_thread.start()
+            # Get initial values on connect
+            self.send_command("GET:SERVO")
+            self.send_command("GET:LED")
+
+
         except serial.SerialException as e:
-            self.log_message(f"Error connecting to {selected_port}: {e}")
-            self.serial_connected = False
+            self.log_message(f"Error: {e}")
+            self.status_label.config(text=f"Error: {e}", fg="red")
+            self.connect_button.config(text="Connect")
 
+    def send_servo_command(self, value):
+        self.send_command(f"SERVO:{value}")
 
-    def send_brightness_command(self):
-        if self.serial_connected:
-            value = int(self.brightness_slider.get())
-            command = f"B{value}\r"  # Note the carriage return!
-            self.send_command(command)
-            self.log_message(f"Sent brightness command: {command.strip()}")
-        else:
-            self.log_message("Not connected to serial port.")
-
-
-    def open_cover(self):
-        if self.serial_connected:
-            self.send_command("O\r")  # Note the carriage return!
-            self.log_message("Sent open cover command")
-        else:
-            self.log_message("Not connected to serial port.")
-
-    def close_cover(self):
-        if self.serial_connected:
-            self.send_command("C\r")  # Note the carriage return!
-            self.log_message("Sent close cover command")
-        else:
-            self.log_message("Not connected to serial port.")
-
-    def halt_cover(self):
-        if self.serial_connected:
-            self.send_command("H\r")  # Note the carriage return!
-            self.log_message("Sent halt cover command")
-        else:
-            self.log_message("Not connected to serial port.")
+    def send_led_command(self, value):
+        self.send_command(f"LED:{value}")
 
     def send_command(self, command):
-         if self.serial_connected:
+        if self.serialInst.is_open:
             try:
-                self.serial_port.write(command.encode())
-            except Exception as e:
-                self.log_message("Failed to send command. Error: "+str(e))
-         else:
-            self.log_message("Not connected to serial port.")
+                self.serialInst.write((command + '\n').encode('utf-8'))
+                self.log_message(f"Sent: {command}") # Log sent command
+            except serial.SerialException as e:
+                self.log_message(f"Serial Error: {e}")
+                self.status_label.config(text=f"Serial Error: {e}", fg="red")
+                self.connect_serial() # Attempt Reconnect
 
-    def update_brightness_display(self, value):
-        self.brightness_value_label.config(text=str(int(float(value))))
-
-    def read_serial(self):
+    def receive_data(self):
         buffer = ""
-        while True:
-            if self.serial_connected:
+        while self.receive_thread_running:
+            if self.serialInst.is_open:
                 try:
-                    data = self.serial_port.read(self.serial_port.in_waiting or 1).decode('ascii', errors='ignore')
-                    if data:
+                    if self.serialInst.in_waiting > 0:
+                        data = self.serialInst.read(self.serialInst.in_waiting).decode('utf-8', errors='ignore') # Read all available bytes
                         buffer += data
-                        if '\r' in buffer:
-                            line, buffer = buffer.split('\r', 1)  # Split at the FIRST carriage return
-                            self.process_response(line)
+
+                        while '\n' in buffer:
+                            line, buffer = buffer.split('\n', 1)  # Split into lines
+                            self.process_received_line(line.strip())
+
+                except serial.SerialException as e:
+                    self.log_message(f"Serial Error: {e}")
+                    self.status_label.config(text=f"Serial Error: {e}", fg="red")
+                    self.connect_serial()  # Attempt to reconnect
+                    return # Exit the thread
+                except OSError as e:
+                    self.log_message(f"OS Error: {e}")
+                    self.receive_thread_running = False
+                    return
+                time.sleep(0.01)
 
 
-                except Exception as e:
-                    self.log_message(f"Error reading serial data: {e}")
-                    self.serial_connected = False  # Disconnect on error.
-                    self.serial_port.close()
+    def process_received_line(self, line):
+        self.log_message(f"Received: {line}")  # Log received data
 
-            time.sleep(0.01)
+        if line.startswith("OK:"):
+            parts = line[3:].split(":")
+            if len(parts) >= 2:
+                command = parts[0]
+                value_str = parts[1]
 
-    def process_response(self, response):
-        self.log_message(f"Received: {response}")  # Log the raw response
-        if "," in response:
-            try:
-                brightness_str, position_str = response.split(",")
-                brightness = int(brightness_str)
-                position = int(position_str)
-                self.update_status_display(brightness, position)
-            except ValueError:
-                self.log_message(f"Error parsing response: {response}")
-        elif response =="x":
-            self.log_message("Invalid Command sent")
+                if command == "SERVO":
+                    try:
+                        value = int(value_str)
+                        self.servo_var.set(value)
+                        self.servo_feedback_label.config(text=f"Last Servo Pos: {value}")
+                    except ValueError:
+                        self.log_message(f"Invalid servo value received: {value_str}")
 
-    def update_status_display(self, brightness, position):
-        self.status_text.config(state=tk.NORMAL)
-        self.status_text.delete(1.0, tk.END)
-        self.status_text.insert(tk.END, f"Brightness: {brightness}\nPosition: {position}")
-        self.status_text.config(state=tk.DISABLED)
+                elif command == "LED":
+                    try:
+                        value = int(value_str)
+                        self.led_var.set(value)
+                        self.led_feedback_label.config(text=f"Last LED Brightness: {value}")
+                    except ValueError:
+                         self.log_message(f"Invalid LED value received: {value_str}")
+
+        elif line.startswith("ERR:"):
+            error_message = line[4:]
+            self.log_message(f"Arduino Error: {error_message}")
+            self.status_label.config(text=f"Arduino Error: {error_message}", fg="orange")
 
     def log_message(self, message):
-        self.log_text.config(state=tk.NORMAL)
+        self.log_text.config(state=tk.NORMAL)  # Temporarily enable editing
         self.log_text.insert(tk.END, message + "\n")
-        self.log_text.config(state=tk.DISABLED)
-        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)  # Disable editing again
+        self.log_text.see(tk.END) #Autoscroll
+
+
 
 root = tk.Tk()
-app = FlatFieldApp(root)
+gui = FlatFieldGUI(root)
 root.mainloop()
