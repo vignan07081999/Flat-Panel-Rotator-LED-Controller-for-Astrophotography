@@ -5,12 +5,12 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- INDI Configuration (Manual) ---
-set(INDI_INCLUDE_DIR "/usr/include")  # Should be correct now
+set(INDI_INCLUDE_DIR "/usr/include")  # Correct: Contains the 'libindi' directory
 set(INDI_LIBRARIES indi indidriver)
-set(INDI_LIBRARY_DIR "/usr/lib") #or /usr/lib/arm-linux-gnueabihf
+set(INDI_LIBRARY_DIR "/usr/lib")    # Verify with: find /usr -name libindi.so*
 
 # --- Qt5 Configuration ---
-set(Qt5SerialPort_DIR "/usr/lib/arm-linux-gnueabihf/cmake/Qt5SerialPort")  # EXAMPLE!  Use the correct path
+set(Qt5SerialPort_DIR "/usr/lib/arm-linux-gnueabihf/cmake/Qt5SerialPort")  # EXAMPLE - Use *your* Qt5SerialPort path
 find_package(Qt5Core REQUIRED)
 find_package(Qt5SerialPort REQUIRED)
 
