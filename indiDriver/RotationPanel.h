@@ -1,8 +1,8 @@
 #ifndef ROTATION_PANEL_H
 #define ROTATION_PANEL_H
 
-#include <indi/indicom.h>  // Corrected include
-#include <indi/indibase.h> //Add indibase.h import
+#include <libindi/indicom.h>  // Corrected include: Use libindi
+#include <libindi/indibase.h> // Corrected include: Use libindi
 
 class RotationPanel : public INDI::DefaultDevice
 {
