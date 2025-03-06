@@ -3,12 +3,14 @@
 #include <thread>
 #include <fstream>
 #include <sstream>
+#include <cstring> //For string functions
 
 // --- Constructor ---
 RotationPanel::RotationPanel(const char *port) : isConnected(false) {
     strncpy(portName, port, sizeof(portName) - 1);
     portName[sizeof(portName) - 1] = '\0'; // Ensure null termination
     connection = new INDI::Connection();
+
 }
 
 // --- Destructor ---
@@ -75,15 +77,15 @@ bool RotationPanel::getValues(){
         if (receiveResponse(buffer, sizeof(buffer))){
            if (strstr(buffer, "OK:Servo:") != nullptr) {
                 int servoVal = atoi(buffer + 8); // Extract value after "OK:Servo:"
-                servoPositionNP[0].value = servoVal;
-            }
+                servoPositionNP->value = servoVal;
+           }
         }
     }
     if (sendCommand("GETL")){
         if (receiveResponse(buffer, sizeof(buffer))){
            if (strstr(buffer, "OK:LED:") != nullptr) {
                 int ledVal = atoi(buffer + 6);  // Extract value after "OK:LED:"
-                ledBrightnessNP[0].value = ledVal;
+                ledBrightnessNP->value = ledVal;
            }
         }
     }
@@ -95,27 +97,27 @@ bool RotationPanel::initProperties() {
     INDI::DefaultDevice::initProperties(); // Call superclass method
 
     // --- Servo Position ---
-    servoPositionNP = newNumberVectorProperty("SERVO_POSITION", "Servo Position", "Main Control", IP_RW, IPS_IDLE);
-    servoPositionNP[0].name = "Position";
-    servoPositionNP[0].label = "Degrees";
-    servoPositionNP[0].format = "%.0f";
-    servoPositionNP[0].min = 0;
-    servoPositionNP[0].max = 180;
-    servoPositionNP[0].step = 1;
-    servoPositionNP[0].value = 90; // Initial value (match Arduino)
-    addNumberVector(servoPositionNP);
+    servoPositionNP = new INDI::NumberVectorProperty("SERVO_POSITION", "Servo Position", "Main Control", IP_RW, IPS_IDLE);
+    (*servoPositionNP)[0].name = "Position";
+    (*servoPositionNP)[0].label = "Degrees";
+    (*servoPositionNP)[0].format = "%.0f";
+    (*servoPositionNP)[0].min = 0;
+    (*servoPositionNP)[0].max = 180;
+    (*servoPositionNP)[0].step = 1;
+    (*servoPositionNP)[0].value = 90; // Initial value (match Arduino)
+    addNumberVector(*servoPositionNP);
 
 
     // --- LED Brightness ---
-    ledBrightnessNP = newNumberVectorProperty("LED_BRIGHTNESS", "LED Brightness", "Main Control", IP_RW, IPS_IDLE);
-    ledBrightnessNP[0].name = "Brightness";
-    ledBrightnessNP[0].label = "Level";
-    ledBrightnessNP[0].format = "%.0f";
-    ledBrightnessNP[0].min = 0;
-    ledBrightnessNP[0].max = 255;
-    ledBrightnessNP[0].step = 1;
-    ledBrightnessNP[0].value = 128;   // Initial value
-    addNumberVector(ledBrightnessNP);
+    ledBrightnessNP = new INDI::NumberVectorProperty("LED_BRIGHTNESS", "LED Brightness", "Main Control", IP_RW, IPS_IDLE);
+    (*ledBrightnessNP)[0].name = "Brightness";
+    (*ledBrightnessNP)[0].label = "Level";
+    (*ledBrightnessNP)[0].format = "%.0f";
+    (*ledBrightnessNP)[0].min = 0;
+    (*ledBrightnessNP)[0].max = 255;
+    (*ledBrightnessNP)[0].step = 1;
+    (*ledBrightnessNP)[0].value = 128;   // Initial value
+    addNumberVector(*ledBrightnessNP);
 
     // --- Connection ---
     addStandardConnectionOption(CONNECTION_SERIAL); // Add standard serial connection option
@@ -130,8 +132,8 @@ void RotationPanel::ISGetProperties(const char *dev) {
         // When properties are requested, update with current values
         getValues();
     }
-    defineNumber(&servoPositionNP);
-    defineNumber(&ledBrightnessNP);
+    defineNumber(servoPositionNP);
+    defineNumber(ledBrightnessNP);
 
 }
 
@@ -139,16 +141,16 @@ void RotationPanel::ISGetProperties(const char *dev) {
 void RotationPanel::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) {
 
     if (strcmp(name, "SERVO_POSITION") == 0) {
-        servoPositionNP.update(values, names, n);
+        servoPositionNP->update(values, names, n);
          //Indi expects the driver to set the value after.
-        IDSetNumber(&servoPositionNP, nullptr);
+        IDSetNumber(servoPositionNP, nullptr);
 
         // Check if the state is OK before sending the command
-        if (servoPositionNP.s == IPS_OK) {
+        if (servoPositionNP->s == IPS_OK) {
             char command[32];
-            snprintf(command, sizeof(command), "S%.0f", servoPositionNP[0].value);
+            snprintf(command, sizeof(command), "S%.0f", (*servoPositionNP)[0].value);
             if (!sendCommand(command)) {
-              servoPositionNP.s = IPS_ALERT; // Set state to Alert if command fails
+              servoPositionNP->s = IPS_ALERT; // Set state to Alert if command fails
               logError("Failed to send servo command.");
             } else {
                 //Wait for response from Arduino and update the values.
@@ -156,49 +158,49 @@ void RotationPanel::ISNewNumber(const char *dev, const char *name, double values
                 if (receiveResponse(buffer, sizeof(buffer))){
                     if (strstr(buffer, "OK:Servo:") != nullptr) {
                         int servoVal = atoi(buffer + 8); // Extract value after "OK:Servo:"
-                        if (servoVal == (int)servoPositionNP[0].value){
-                             servoPositionNP.s = IPS_OK;
+                        if (servoVal == (int)(*servoPositionNP)[0].value){
+                             servoPositionNP->s = IPS_OK;
                         }
                         else {
-                            servoPositionNP.s = IPS_ALERT; // Set state to Alert if command fails
+                            servoPositionNP->s = IPS_ALERT; // Set state to Alert if command fails
                             logError("Servo position mismatch.");
                         }
                     }
                 }
                 else{
-                    servoPositionNP.s = IPS_ALERT;
+                    servoPositionNP->s = IPS_ALERT;
                     logError("No response from servo command.");
                 }
             }
         }
     }
     else if (strcmp(name, "LED_BRIGHTNESS") == 0) {
-        ledBrightnessNP.update(values, names, n);
+        ledBrightnessNP->update(values, names, n);
         //Indi expects the driver to set the value after.
-        IDSetNumber(&ledBrightnessNP, nullptr);
+        IDSetNumber(ledBrightnessNP, nullptr);
 
-      if (ledBrightnessNP.s == IPS_OK) {
+      if (ledBrightnessNP->s == IPS_OK) {
         char command[32];
-        snprintf(command, sizeof(command), "L%.0f", ledBrightnessNP[0].value);
+        snprintf(command, sizeof(command), "L%.0f", (*ledBrightnessNP)[0].value);
         if (!sendCommand(command)) {
-             ledBrightnessNP.s = IPS_ALERT; // Set state to Alert
+             ledBrightnessNP->s = IPS_ALERT; // Set state to Alert
              logError("Failed to send LED command.");
         } else {
             char buffer[256];
                 if (receiveResponse(buffer, sizeof(buffer))){
                     if (strstr(buffer, "OK:LED:") != nullptr) {
                         int ledVal = atoi(buffer + 6); // Extract value after "OK:Servo:"
-                        if (ledVal == (int)ledBrightnessNP[0].value){
-                             ledBrightnessNP.s = IPS_OK;
+                        if (ledVal == (int)(*ledBrightnessNP)[0].value){
+                             ledBrightnessNP->s = IPS_OK;
                         }
                         else {
-                            ledBrightnessNP.s = IPS_ALERT; // Set state to Alert if command fails
+                            ledBrightnessNP->s = IPS_ALERT; // Set state to Alert if command fails
                             logError("LED brightness mismatch.");
                         }
                     }
                 }
                 else{
-                    ledBrightnessNP.s = IPS_ALERT;
+                    ledBrightnessNP->s = IPS_ALERT;
                     logError("No response from LED command.");
                 }
         }
@@ -272,7 +274,7 @@ bool RotationPanel::receiveResponse(char *buffer, size_t bufferSize, int timeout
                  return false;
              }
         }
-       
+
         auto current_time = std::chrono::high_resolution_clock::now();
         auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - start_time);
         if (elapsed_time.count() > timeout_ms) {
@@ -288,13 +290,13 @@ bool RotationPanel::receiveResponse(char *buffer, size_t bufferSize, int timeout
 // --- updatePropertyStates ---
 void RotationPanel::updatePropertyStates() {
     if (isConnected) {
-        servoPositionNP.s = IPS_OK;
-        ledBrightnessNP.s = IPS_OK;
+        servoPositionNP->s = IPS_OK;
+        ledBrightnessNP->s = IPS_OK;
     } else {
-        servoPositionNP.s = IPS_IDLE;
-        ledBrightnessNP.s = IPS_IDLE;
+        servoPositionNP->s = IPS_IDLE;
+        ledBrightnessNP->s = IPS_IDLE;
     }
-  
+
 }
 
 void RotationPanel::logError(const std::string& message) {
