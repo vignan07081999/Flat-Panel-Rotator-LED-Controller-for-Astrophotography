@@ -6,7 +6,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(INDI REQUIRED libindi>=1.7) # Ensure you have a recent INDI
 
 # Include INDI headers
-include_directories(${INDI_INCLUDE_DIRS})
+include_directories(${/usr/include/libindi})
 
 add_executable(indi_simpleflat indi_simpleflat.cpp)
 
