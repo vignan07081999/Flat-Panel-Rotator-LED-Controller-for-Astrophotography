@@ -1,97 +1,150 @@
 #include <Servo.h>
 #include <EEPROM.h>
 
-// --- Configuration ---
-#define SERVO_PIN 9
-#define LED_PIN 10      // Use a PWM pin
-#define EEPROM_SERVO_ADDR 0
-#define EEPROM_LED_ADDR 2
-#define BAUD_RATE 115200
+// --- Pin Definitions ---
+const int servoPin = 9;       // Digital pin connected to the servo
+const int ledPin = 10;       // Digital pin connected to the LED strip (must be PWM)
 
-// --- Variables ---
+// --- Servo and LED Variables ---
 Servo myServo;
-int servoPos = 90;  // Initial position (degrees)
-int ledBrightness = 128; // Initial brightness (0-255)
-bool newServoData = false;
-bool newLedData = false;
+int servoPos = 90;          // Initial servo position (degrees)
+int ledBrightness = 128;    // Initial LED brightness (0-255)
+int ledBrightnessMax = 255; //maximim led strip brightness
+
+// --- EEPROM Addresses ---
+const int servoPosAddress = 0;
+const int ledBrightnessAddress = 2; // Use address 2, as int might take 2 bytes
+
+// --- Serial Communication ---
+const int baudRate = 9600;  // Match this to your Python code
+String inputString = "";         // A String to hold incoming data
+bool stringComplete = false;  // Whether the string is complete
+
 
 void setup() {
-    Serial.begin(BAUD_RATE);
-    myServo.attach(SERVO_PIN);
-    pinMode(LED_PIN, OUTPUT);
+  myServo.attach(servoPin);
+  pinMode(ledPin, OUTPUT);
 
-    // Load last known values from EEPROM
-    servoPos = EEPROM.read(EEPROM_SERVO_ADDR);
-    ledBrightness = EEPROM.read(EEPROM_LED_ADDR);
-    //check for valid eeprom values:
-    if (servoPos<0 || servoPos>180) { servoPos = 90;}
-    if (ledBrightness<0 || ledBrightness>255) {ledBrightness = 128;}
-    
-    myServo.write(servoPos);
-    analogWrite(LED_PIN, ledBrightness);
+  // --- Load settings from EEPROM ---
+  servoPos = EEPROM.read(servoPosAddress);
+  if (servoPos < 0 || servoPos > 180) servoPos = 90;  // Sanity check
+   myServo.write(servoPos);
 
-    Serial.println("Rotation Panel Ready"); // Initial handshake
+    ledBrightness = EEPROM.read(ledBrightnessAddress);
+    if (ledBrightness < 0 || ledBrightness > ledBrightnessMax) ledBrightness = 128; // Sanity check
+    analogWrite(ledPin, ledBrightness);
+
+  Serial.begin(baudRate);
+  inputString.reserve(20); // Reserve space for incoming serial data
 }
 
 void loop() {
-    if (Serial.available() > 0) {
-        processIncomingCommand();
+    //Serial Event Handling
+    serialEvent();
+    
+    if (stringComplete) {
+        processCommand(inputString);
+        inputString = ""; // Clear the string
+        stringComplete = false;
     }
 
-    if (newServoData) {
-        myServo.write(servoPos);
-        EEPROM.write(EEPROM_SERVO_ADDR, servoPos);
-        newServoData = false;
-        Serial.print("OK:Servo:");
-        Serial.println(servoPos);  // Send feedback
-    }
-
-    if (newLedData) {
-        analogWrite(LED_PIN, ledBrightness);
-        EEPROM.write(EEPROM_LED_ADDR, ledBrightness);
-        newLedData = false;
-        Serial.print("OK:LED:");
-        Serial.println(ledBrightness); // Send feedback
-    }
-    delay(10); // Small delay
 }
 
 
-void processIncomingCommand() {
-    String command = Serial.readStringUntil('\n');
-    command.trim();  // Remove leading/trailing whitespace
+void processCommand(String command) {
+  // --- Command Parsing ---
+  // Commands will be in the format: "COMMAND:VALUE"
+  // Examples:  "SERVO:120", "LED:200", "PRESET:1"
 
-    if (command.startsWith("S")) {  // Servo command (e.g., "S120")
-        int newPos = command.substring(1).toInt();
+    int separatorIndex = command.indexOf(':');
+    if (separatorIndex == -1) return; // Invalid command
 
-        if (newPos >= 0 && newPos <= 180) {
-            servoPos = newPos;
-            newServoData = true;
-        } else {
-            Serial.println("ERR:Invalid Servo Position");
-        }
+    String commandType = command.substring(0, separatorIndex);
+    String commandValueStr = command.substring(separatorIndex + 1);
+    int commandValue = commandValueStr.toInt();
 
-    } else if (command.startsWith("L")) {  // LED command (e.g., "L200")
-        int newBrightness = command.substring(1).toInt();
 
-        if (newBrightness >= 0 && newBrightness <= 255) {
-            ledBrightness = newBrightness;
-            newLedData = true;
-        } else {
-            Serial.println("ERR:Invalid LED Brightness");
-        }
+  if (commandType == "SERVO") {
+    if (commandValue >= 0 && commandValue <= 180) {
+      servoPos = commandValue;
+      myServo.write(servoPos);
+      EEPROM.write(servoPosAddress, servoPos);
+        Serial.print("OK:SERVO:");
+        Serial.println(servoPos);  // Send feedback
+    } else {
+      Serial.println("ERR:Invalid servo position");
     }
-     else if (command.startsWith("GET")) {
-        if (command.substring(3).startsWith("S")) {  
-            Serial.print("OK:Servo:");
-            Serial.println(servoPos); 
-        }
-        else if (command.substring(3).startsWith("L")) {  
-            Serial.print("OK:LED:");
-            Serial.println(ledBrightness);
-        }
+
+  } else if (commandType == "LED") {
+    if (commandValue >= 0 && commandValue <= ledBrightnessMax) {
+      ledBrightness = commandValue;
+      analogWrite(ledPin, ledBrightness);
+      EEPROM.write(ledBrightnessAddress, ledBrightness);
+        Serial.print("OK:LED:");
+        Serial.println(ledBrightness); // Send feedback
+    } else {
+      Serial.println("ERR:Invalid LED brightness");
     }
+
+  } else if (commandType == "PRESET") {
+      applyPreset(commandValue);
+
+  }  else if (commandType == "GET") { //Added to handle get property requests from INDI
+      if(commandValueStr == "SERVO"){
+        Serial.print("OK:SERVO:");
+        Serial.println(servoPos);
+      }else if(commandValueStr == "LED"){
+        Serial.print("OK:LED:");
+        Serial.println(ledBrightness);
+      }
+
+  }
     else {
-        Serial.println("ERR:Unknown Command");
+    Serial.print("ERR:Unknown command: ");
+      Serial.println(command);
+  }
+}
+
+
+void applyPreset(int presetNumber) {
+    // Define your presets here.  Expand as needed.
+    switch (presetNumber) {
+        case 1:
+            servoPos = 0;
+            ledBrightness = 50;
+            break;
+        case 2:
+            servoPos = 90;
+            ledBrightness = 150;
+            break;
+        case 3:
+            servoPos = 180;
+            ledBrightness = 255;
+            break;
+        default:
+            Serial.println("ERR:Invalid preset number");
+            return;
+    }
+
+    myServo.write(servoPos);
+    analogWrite(ledPin, ledBrightness);
+    EEPROM.write(servoPosAddress, servoPos);
+    EEPROM.write(ledBrightnessAddress, ledBrightness);
+    Serial.print("OK:PRESET:");
+    Serial.print(presetNumber);
+    Serial.print(":SERVO:");
+    Serial.print(servoPos);
+    Serial.print(":LED:");
+    Serial.println(ledBrightness);
+}
+
+//Serial Event for receiving data
+void serialEvent() {
+    while (Serial.available()) {
+        char inChar = (char)Serial.read();
+        inputString += inChar;
+        if (inChar == '\n') {
+            stringComplete = true;
+        }
     }
 }
