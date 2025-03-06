@@ -1,7 +1,7 @@
 #ifndef ROTATION_PANEL_H
 #define ROTATION_PANEL_H
 
-#include "indicom.h"  // For serial communication
+#include <indi/indicom.h> // Corrected include  // For serial communication
 
 class RotationPanel : public INDI::DefaultDevice
 {
