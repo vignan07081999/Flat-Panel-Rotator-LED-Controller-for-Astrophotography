@@ -3,26 +3,42 @@
 
 // --- Pin Definitions ---
 const int SERVO_PIN = 9;
-const int LED_PIN = 10;
+const int LED_PIN = 10; // PWM pin
 
 // --- EEPROM Addresses ---
 const int EEPROM_BRIGHTNESS_ADDR = 0;
 const int EEPROM_SERVO_ADDR = 1;
 
+// --- States ---
+const int STATE_CLOSED = 0;
+const int STATE_OPEN = 1;
+const int STATE_MOVING = 2;
+
 // --- Variables ---
 Servo myServo;
-int brightness = 0;
+int brightness = 0;       // 0-255
 int servoPosition = 180; // Closed initially
-bool coverMoving = false; //flag to check servo movement
+bool coverMoving = false;
+
+// --- Commands ---
+const char CMD_SET_BRIGHTNESS = 'B'; // Bxxx (xxx = 000-255)
+const char CMD_OPEN = 'O';
+const char CMD_CLOSE = 'C';
+const char CMD_HALT = 'H';
+const char CMD_GET_STATUS = 'S';
+
+
 
 void setup() {
-    Serial.begin(115200); // Consistent baud rate
+    Serial.begin(115200); // Use a consistent baud rate
     myServo.attach(SERVO_PIN);
     pinMode(LED_PIN, OUTPUT);
     loadSettings();
     setServoPosition(servoPosition); //move to saved position
     setBrightness(brightness); //set saved brightness
-    sendStatus(); //send the initial status
+    applyLightState(); //apply the light
+    sendStatus(); //initial status
+
 }
 
 void loop() {
@@ -31,7 +47,8 @@ void loop() {
         commandLine.trim();
         processCommand(commandLine);
     }
-     // Smooth Servo Movement with Timeout
+
+      // Smooth Servo Movement with Timeout
     if (coverMoving) {
         static unsigned long moveStartTime = 0;
         int currentServoPos = myServo.read();
@@ -47,11 +64,11 @@ void loop() {
                 } else {
                     myServo.write(currentServoPos - 1);
                 }
-                delay(5);  // Small delay
+                delay(5); // Small delay
             } else {
                 // Timeout
                 coverMoving = false;
-                moveStartTime = 0;
+                moveStartTime = 0; // Reset timer
             }
         } else {
             coverMoving = false;
@@ -61,7 +78,7 @@ void loop() {
 }
 
 void processCommand(String commandLine) {
-    if (commandLine.isEmpty()) { // Use .isEmpty() for String objects
+    if (commandLine.length() == 0) { // Corrected emptiness check
         return; // Ignore empty commands
     }
 
@@ -102,25 +119,43 @@ void processCommand(String commandLine) {
         Serial.println("ERROR"); // Unknown command
     }
 }
+void openCover()
+{
+    setServoPosition(0); //open
+    coverMoving = true;
+}
+
+void closeCover()
+{
+     setServoPosition(180); //close
+    coverMoving = true;
+}
+void haltCover()
+{
+    coverMoving = false;
+}
+void applyLightState() {
+  analogWrite(LED_PIN, brightness); //set the led
+}
 
 void sendStatus() {
-    Serial.print("STATUS:");
-    Serial.print(myServo.read()); //send current position
-    Serial.print(",");
+    // Format: "brightness,servoPosition\n"  (NO leading zeros, NO carriage return)
     Serial.print(brightness);
-    Serial.println();
+    Serial.print(",");
+    Serial.print(myServo.read()); //send current position
+    Serial.println(); // Newline is important
     Serial.flush(); // Wait for sending to complete
+
 }
 
 void setBrightness(int newBrightness) {
     brightness = constrain(newBrightness, 0, 255);
-    analogWrite(LED_PIN, brightness);
+    applyLightState(); //update led
 }
+
 void setServoPosition(int newPosition) {
     servoPosition = constrain(newPosition, 0, 180);
-    //myServo.write(servoPosition); //move in the loop
-    coverMoving = true; //set flag for smooth movement
-
+    //myServo.write(servoPosition); //move servo in the loop
 }
 void saveSettings()
 {
