@@ -1,21 +1,21 @@
-#include "RotationPanel.h"
+#include "RotationPanel.h" // VERY IMPORTANT: Include the header file!
 #include <chrono>
 #include <thread>
 #include <fstream>
 #include <sstream>
-#include <cstring> //For string functions
+#include <cstring> // For string functions (already in .h, but good practice to include in .cpp too)
+
 
 // --- Constructor ---
 RotationPanel::RotationPanel(const char *port) : isConnected(false) {
     strncpy(portName, port, sizeof(portName) - 1);
     portName[sizeof(portName) - 1] = '\0'; // Ensure null termination
     connection = new INDI::Connection();
-
 }
 
 // --- Destructor ---
 RotationPanel::~RotationPanel() {
-     if (isConnected) {
+    if (isConnected) {
         Disconnect(); // Ensure proper disconnection
     }
     delete connection;
@@ -77,7 +77,7 @@ bool RotationPanel::getValues(){
         if (receiveResponse(buffer, sizeof(buffer))){
            if (strstr(buffer, "OK:Servo:") != nullptr) {
                 int servoVal = atoi(buffer + 8); // Extract value after "OK:Servo:"
-                servoPositionNP->value = servoVal;
+                servoPositionNP->value = servoVal; //Access using -> operator
            }
         }
     }
@@ -85,7 +85,7 @@ bool RotationPanel::getValues(){
         if (receiveResponse(buffer, sizeof(buffer))){
            if (strstr(buffer, "OK:LED:") != nullptr) {
                 int ledVal = atoi(buffer + 6);  // Extract value after "OK:LED:"
-                ledBrightnessNP->value = ledVal;
+                ledBrightnessNP->value = ledVal; //Acces using -> operator
            }
         }
     }
