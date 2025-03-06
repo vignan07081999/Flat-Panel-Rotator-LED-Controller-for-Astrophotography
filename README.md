@@ -1,4 +1,4 @@
-# Arduino-Controlled Rotating Flat Field Panel with Python GUI
+# Flat Panel Rotator LED controller for Astrophotography
 
 This project provides a system for controlling a rotating flat field panel for astrophotography, using an Arduino Uno, a servo motor, an LED strip, and a Python-based graphical user interface (GUI). The system allows for precise control of the panel's rotation and LED brightness, with preset options and EEPROM storage for persistent settings.  It is designed to be used standalone, with communication between the Raspberry Pi (running the GUI) and the Arduino occurring over a serial connection.  
 
