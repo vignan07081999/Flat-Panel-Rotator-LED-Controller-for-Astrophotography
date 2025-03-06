@@ -1,107 +1,118 @@
-# Flat-Panel-Rotator-LED-Controller-for-Astrophotography
-This project is a custom rotating flat field panel designed for astrophotography. It can be used for taking flat frames and as a scope cover when not in use.
+# Arduino-Controlled Rotating Flat Field Panel with Python GUI
+
+This project provides a system for controlling a rotating flat field panel for astrophotography, using an Arduino Uno, a servo motor, an LED strip, and a Python-based graphical user interface (GUI). The system allows for precise control of the panel's rotation and LED brightness, with preset options and EEPROM storage for persistent settings.  It is designed to be used standalone, with communication between the Raspberry Pi (running the GUI) and the Arduino occurring over a serial connection.  
+
+**Note:** This project does *not* include KStars/EKOS integration via INDI.  While INDI is the recommended approach for full integration with astrophotography software, this project focuses on providing a standalone, GUI-driven solution.
 
 ## Project Overview
-This project is a **custom rotating flat field panel** designed for astrophotography. It can be used for taking flat frames and as a scope cover when not in use. The system consists of:
-- **Arduino-controlled hardware** (servo motor, LED panel, EEPROM storage)
-- **INDI driver** (for Linux-based astronomy software like EKOS/KStars on StellarMate)
-- **ASCOM driver** (for Windows-based astronomy software)
-- **Windows GUI Application** (for manual control on Windows)
 
-## Features
-✅ **Servo-controlled rotating panel** (acts as a cover & flat field source)  
-✅ **Dimmable LED panel** (adjust brightness for flat calibration)  
-✅ **Real-time feedback** (reads actual servo position & LED brightness)  
-✅ **Persistent memory storage** (recovers last settings after power loss)  
-✅ **Support for INDI & ASCOM drivers**  
-✅ **Standalone Windows GUI app for manual control**  
+The system consists of two main components:
 
----
+1.  **Arduino Firmware (`FlatFieldPanel.ino`):**
+    *   Controls the servo motor for panel rotation.
+    *   Controls the LED strip brightness using PWM (Pulse Width Modulation).
+    *   Reads and writes settings (servo position, LED brightness) to the Arduino's EEPROM to preserve them across power cycles.
+    *   Communicates with the Raspberry Pi via serial communication, receiving commands and sending feedback.
+    *   Implements a simple command protocol (e.g., "SERVO:120", "LED:200").
+
+2.  **Python GUI (`gui.py`):**
+    *   Runs on a Raspberry Pi (or any computer with Python and the required libraries).
+    *   Provides a user-friendly interface with:
+        *   A dropdown menu for selecting the serial port connected to the Arduino.
+        *   A slider for controlling the servo position (0-180 degrees).
+        *   A slider for controlling the LED brightness (0-255).
+        *   Preset buttons for common servo positions (Open, Close) and LED brightness levels (Full, Half, Off).
+        *   "Send" buttons to explicitly send commands to the Arduino based on the slider values.
+        *   Feedback labels displaying the last known servo position and LED brightness.
+        *   A real-time log window showing sent commands and received responses from the Arduino.
+        *   A connect/disconnect button to establish or terminate the serial connection.
+    *   Uses the `tkinter` library for the GUI and the `pyserial` library for serial communication.
+    *   Implements a separate thread for handling incoming serial data from the Arduino, ensuring the GUI remains responsive.
+
 ## Hardware Requirements
-- **Arduino Uno** (or compatible board)
-- **Servo motor** (capable of rotating the panel, e.g., MG995)
-- **Dimmable LED strips** (PWM controlled)
-- **3D-printed panel enclosure** (to mount LED and servos)
-- **External power source** (if needed for LEDs/servos)
 
-### Circuit Diagram
-The circuit includes connections for:
-- Servo motor controlled via **Arduino PWM pin**
-- LED brightness controlled via **PWM pin**
-- EEPROM used for storing last position/brightness
+*   Arduino Uno (or compatible)
+*   Servo motor (e.g., SG90, MG996R) - Choose one with sufficient torque for your flat panel.
+*   2-wire LED strip (addressable LED strips are *not* supported by this code; use a simple, single-color strip that can be controlled with PWM)
+*   Resistor (value depends on your LED strip - typically 220-470 ohms) - Protects the Arduino's output pin.
+*   Power supply for the LED strip (voltage and current rating depend on your strip)
+*   Power supply for the Arduino (can be powered via USB from the Raspberry Pi)
+*   Jumper wires
+*   Raspberry Pi (any model; tested with Raspberry Pi 3 and 4) - or another computer to run the GUI.
+*   (Optional) Breadboard for prototyping.
 
----
-## Software Components
-### **1. Arduino Firmware** (`Arduino/FlatPanelController.ino`)
-- Written in **C++**
-- Controls servos and LED brightness via serial commands
-- Saves last known state in EEPROM for recovery
+## Wiring Diagram
 
-### **2. INDI Driver** (`INDI/IndiFlatPanel.cpp`)
-- Written in **C++**
-- Compatible with **Linux, StellarMate, EKOS/KStars**
-- Provides GUI controls in KStars/EKOS for servo & LED control
 
-### **3. ASCOM Driver** (`ASCOM/ASCOMFlatPanel.cs`)
-- Written in **C#**
-- Compatible with **Windows-based astronomy software**
-- Provides panel open/close and LED brightness control
 
-### **4. Windows GUI Application** (`WindowsApp/FlatPanelControl.cs`)
-- Written in **C#**
-- Standalone application to control the panel on Windows
+ **Servo:** Connect the servo's VCC (usually red) to the Arduino's 5V pin, GND (usually brown) to Arduino's GND, and the signal wire (usually orange or yellow) to Arduino digital pin 9.
+*   **LED Strip:** Connect the LED strip's positive (+) wire to the positive terminal of your *external* LED power supply.  Connect the LED strip's negative (-) wire to the negative terminal of the power supply *AND* to the Arduino's GND.  Connect a resistor (220-470 ohms is a good starting point) between Arduino digital pin 10 and the LED strip's data/control wire (if it has one; for simple 2-wire strips, this is often just the positive wire).  **Do not power the LED strip directly from the Arduino's 5V pin, especially if it's a long or high-power strip.**
+*   **Arduino Power:** The Arduino can be powered via its USB port, connected to the Raspberry Pi.
 
----
-## Installation & Usage
-### **1. Arduino Firmware**
-1. Install **Arduino IDE**
-2. Connect the Arduino via USB
-3. Open `FlatPanelController.ino`, select the correct board & port
-4. Upload the code
+## Software Dependencies
 
-### **2. INDI Driver (Linux/StellarMate)**
-1. Open a terminal & run:
-   ```bash
-   git clone https://github.com/vignan07081999/Flat-Panel-Rotator-LED-Controller-for-Astrophotography.git
-   cd FlatPanelController/INDI
-   mkdir build && cd build
-   cmake ..
-   make
-   sudo make install
-   ```
-2. Restart **INDI server**:
-   ```bash
-   indiserver -v indi_flatpanel
-   ```
-3. In **EKOS/KStars**, add a new device and select `Flat Panel Controller`
+*   **Arduino IDE:** To upload the firmware (`FlatFieldPanel.ino`) to the Arduino Uno.
+*   **Python 3:**  The GUI is written in Python 3.
+*   **pyserial:**  For serial communication. Install with: `pip install pyserial`
+*   **tkinter:**  For the GUI.  Usually included with Python 3 installations, but you may need to install it separately on some systems (e.g., `sudo apt-get install python3-tk` on Debian/Raspberry Pi OS).
 
-### **3. ASCOM Driver (Windows)**
-1. Install **ASCOM Platform**
-2. Clone the repo & build:
-   ```powershell
-   git clone https://github.com/vignan07081999/Flat-Panel-Rotator-LED-Controller-for-Astrophotography.git
-   cd FlatPanelController/ASCOM
-   ```
-3. Open the `.csproj` file in **Visual Studio**, build & register the driver
-4. Select `Flat Panel Controller` in your ASCOM-compatible software
+## Installation Steps
 
-### **4. Windows GUI Application**
-1. Clone the repo:
-   ```powershell
-   git clone https://github.com/vignan07081999/Flat-Panel-Rotator-LED-Controller-for-Astrophotography.git
-   ```
-2. Open `FlatPanelControl.csproj` in **Visual Studio**
-3. Build the project & run `FlatPanelControl.exe`
+1.  **Arduino Setup:**
+    *   Download the `FlatFieldPanel.ino` file.
+    *   Open the file in the Arduino IDE.
+    *   Connect your Arduino Uno to your computer via USB.
+    *   Select the correct board (Arduino Uno) and port in the Arduino IDE (Tools menu).
+    *   Upload the sketch to the Arduino.
 
----
-## Future Improvements
-🔹 Add WiFi/Bluetooth support for wireless control  
-🔹 Integrate into NINA & other astrophotography software  
-🔹 Support more flat panel hardware types  
+2.  **Raspberry Pi (or other computer) Setup:**
+    *   Ensure you have Python 3 and `pip` installed.
+    *   Install `pyserial`:
+        ```bash
+        pip install pyserial
+        ```
+    *   If `tkinter` is not already installed (you'll get an error when running the GUI if it's missing), install it.  The specific command depends on your operating system.  On Debian/Raspberry Pi OS:
+        ```bash
+        sudo apt-get update
+        sudo apt-get install python3-tk
+        ```
+    *   Download the `gui.py` file.
 
-### **License & Contributions**
-This project is **open-source**! Feel free to contribute or suggest improvements.
+3.  **Running the GUI:**
+    *   Connect the Arduino to the Raspberry Pi via USB.
+    *   Open a terminal on the Raspberry Pi.
+    *   Navigate to the directory where you saved `gui.py`.
+    *   Run the GUI:
+        ```bash
+        python3 gui.py
+        ```
+    *   Select the correct serial port from the dropdown menu in the GUI.
+    *   Click "Connect".
+    *   Use the sliders and preset buttons to control the flat panel.
 
-🚀 **Happy Imaging!**
+## Usage
 
+*   **Serial Port Selection:**  Select the correct serial port from the dropdown that corresponds to your Arduino.
+*   **Connect/Disconnect:** Use the "Connect" button to establish a serial connection.  The button will change to "Disconnect" when connected. Click "Disconnect" to close the connection.
+*   **Servo Control:**  Use the servo slider to set the servo position (0-180 degrees). Click "Send Servo" to apply the setting.  Use the "Open (0)" and "Close (180)" preset buttons for quick positioning.
+*   **LED Control:** Use the LED slider to set the brightness (0-255). Click "Send LED" to apply.  Use the "Full," "Half," and "Off" preset buttons.
+*   **Feedback:** The "Last Servo Pos" and "Last LED Brightness" labels show the last values sent to and acknowledged by the Arduino.
+*   **Log Window:**  The log window displays all commands sent to the Arduino and all responses received. This is useful for debugging and understanding the communication.
+*   **Presets**: Are available for quick selection of servo angle and led brightness.
+
+## Troubleshooting
+
+*   **GUI Doesn't Start:**  Make sure you have Python 3 and `tkinter` installed.
+*   **Serial Port Error:** Ensure you've selected the correct serial port. Try unplugging and replugging the Arduino. Check the output of `ls /dev/tty*` (on Linux) to see if the port changes.
+*   **No Response from Arduino:** Verify the wiring. Check that the Arduino is powered. Make sure the baud rate in `gui.py` (9600) matches the baud rate in `FlatFieldPanel.ino`.  Use the Arduino IDE's Serial Monitor to test if the Arduino is receiving commands.
+* **GUI Freezes**: There might be an issue with serial communication. The program is built in such a way that the GUI does not freeze. If it freezes, try restarting the arduino and/or reconnecting.
+
+## Files
+
+*   **`FlatFieldPanel.ino`:** The Arduino firmware.
+*   **`gui.py`:** The Python GUI script.
+
+## Contributing
+
+Contributions are welcome!  Please submit pull requests or open issues on GitHub.
 
