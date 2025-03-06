@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(indi_flatfield)
+project(indi_simpleflat)
 
 # Use pkg-config to find INDI
 find_package(PkgConfig REQUIRED)
