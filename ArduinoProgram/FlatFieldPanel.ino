@@ -3,7 +3,7 @@
 
 // --- Pin Definitions ---
 const int servoPin = 9;      // Servo signal pin
-const int ledPin = 10;       // LED strip
+const int ledPin = 3;       // LED strip
 
 // --- Servo and LED Variables ---
 Servo myServo;
