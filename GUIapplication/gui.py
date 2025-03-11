@@ -4,7 +4,7 @@ import serial
 import serial.tools.list_ports
 import threading
 import time
-from tkinter import messagebox
+from tkinter import messagebox  # Keep for other messages (e.g., connection errors)
 
 class FlatFieldGUI:
     def __init__(self, master):
@@ -16,6 +16,7 @@ class FlatFieldGUI:
         self.serialInst = serial.Serial()
         self.servo_current_pos = None  # Store current servo position (reliably)
         self.led_current_brightness = None # Store the led brightness
+
 
         # --- Serial Port Selection ---
         self.port_label = tk.Label(master, text="Select Serial Port:")
@@ -39,7 +40,7 @@ class FlatFieldGUI:
         self.servo_var = tk.IntVar()
         # Slider's position is set *only* from Arduino feedback.
         self.servo_scale = tk.Scale(master, from_=0, to=180, orient=tk.HORIZONTAL,
-                                     variable=self.servo_var, state=tk.DISABLED)  # Initially disabled
+                                     variable=self.servo_var, state=tk.DISABLED)
         self.servo_scale.grid(row=1, column=1, sticky=tk.W + tk.E)
 
         self.servo_send_button = tk.Button(master, text="Send Servo",
@@ -66,7 +67,7 @@ class FlatFieldGUI:
 
         self.led_var = tk.IntVar()
         self.led_scale = tk.Scale(master, from_=0, to=255, orient=tk.HORIZONTAL,
-                                   variable=self.led_var, state=tk.DISABLED) # Initially disabled
+                                   variable=self.led_var, state=tk.DISABLED)
         self.led_scale.grid(row=4, column=1, sticky=tk.W + tk.E)
 
         self.led_send_button = tk.Button(master, text="Send LED", command=self.send_led_command_wrapper)
@@ -85,7 +86,7 @@ class FlatFieldGUI:
         self.led_half_button = tk.Button(self.led_preset_frame, text="Half", command=lambda: self.send_led_command_wrapper(128))
         self.led_half_button.pack(side=tk.LEFT, padx=5)
 
-        self.led_off_button = tk.Button(self.led_preset_frame, text="Off", command=lambda: self.send_led_command(0))
+        self.led_off_button = tk.Button(self.led_preset_frame, text="Off", command=lambda: self.send_led_command_wrapper(0))
         self.led_off_button.pack(side=tk.LEFT, padx=5)
 
         # --- Status Label ---
@@ -115,30 +116,18 @@ class FlatFieldGUI:
                 "Warning",
                 "Are you sure you want to turn outside the limits?\nThis is for testing only."
             )
-            if response:  # User clicked "Yes"
+            if response:
                 self.send_servo_command(value)
-            else:  # User clicked "No"
-                self.servo_var.set(self.servo_current_pos)  # Revert
+            else:
+                # Revert slider *after* getting feedback.
+                self.send_command("GET:SERVO")
         else:
             self.send_servo_command(value)
 
     def open_lid(self):
-        """Opens the lid (servo to position 50) with LED off, and includes a delay."""
-
-        # Request current position *before* taking action
-        self.send_command("GET:SERVO")
-        # Schedule the rest of the open_lid logic to run *after* getting feedback
-        self.master.after(200, self._open_lid_after_get)
-
-    def _open_lid_after_get(self):
-        """Helper function to handle open_lid logic after getting servo feedback."""
-        if self.servo_current_pos == 50:
-            messagebox.showinfo("Info", "Lid is already open.")
-            return
-
+        """Opens the lid (servo to position 50) with LED off."""
         self.send_led_command(0)  # Turn LED off
-        # Delay servo command by 1 second AFTER turning off LED
-        self.master.after(1000, self.send_servo_command, 50)
+        self.send_servo_command(50)  # Move servo (no prompt needed here)
 
     def get_serial_ports(self):
         ports = serial.tools.list_ports.comports()
@@ -161,7 +150,7 @@ class FlatFieldGUI:
             self.receive_thread_running = False
             self.servo_feedback_label.config(text="Last Servo Pos: N/A")
             self.led_feedback_label.config(text="Last LED Brightness: N/A")
-            self.servo_scale.config(state=tk.DISABLED)  # Disable sliders
+            self.servo_scale.config(state=tk.DISABLED)
             self.led_scale.config(state=tk.DISABLED)
             return
 
@@ -172,12 +161,11 @@ class FlatFieldGUI:
         try:
             self.serialInst = serial.Serial(port=selected_port, baudrate=9600, timeout=1, write_timeout=1)
             self.log_message(f"Connecting to {selected_port}...")
-            self.serialInst.dtr = False
+            self.serialInst.dtr = False  # Prevent DTR reset on some Arduinos
             time.sleep(0.1)
-            self.serialInst.open()
-            time.sleep(2.0)
-            self.serialInst.reset_input_buffer()
-            self.serialInst.dtr = True
+            self.serialInst.reset_input_buffer() # Clear buffer
+            self.serialInst.dtr = True # Set the dtr
+            time.sleep(2)  # Allow time for Arduino to initialize (important!)
             self.status_label.config(text=f"Connected to {selected_port}", fg="green")
             self.connect_button.config(text="Disconnect")
             self.receive_thread_running = True
@@ -186,9 +174,8 @@ class FlatFieldGUI:
             # Get initial values *after* starting the thread:
             self.send_command("GET:SERVO")
             self.send_command("GET:LED")
-            self.servo_scale.config(state=tk.NORMAL)  # Enable sliders
+            self.servo_scale.config(state=tk.NORMAL)
             self.led_scale.config(state=tk.NORMAL)
-
 
         except serial.SerialException as e:
             self.log_message(f"Error: {e}")
@@ -196,7 +183,7 @@ class FlatFieldGUI:
             self.connect_button.config(text="Connect")
 
     def send_servo_command(self, value):
-        # Turn off LED before *any* servo movement:
+       # Turn off LED before *any* servo movement:
         if self.led_current_brightness !=0: #Only when led is on
             self.send_led_command(0)
             # Use after() so the LED command has time to be processed
@@ -204,59 +191,25 @@ class FlatFieldGUI:
         else: #If led is already off
              self._send_servo_after_led(value)
 
-
     def _send_servo_after_led(self, value):
         # This function sends the *actual* servo command
         self.send_command(f"SERVO:{value}")
 
     def send_preset_command(self, value):
-        # Request current position *before* taking action.
-        self.send_command("GET:SERVO")
-        # Use after() to schedule the logic after getting feedback.
-        self.master.after(200, self._send_preset_after_get, value)
-
-    def _send_preset_after_get(self, value):
-        # This function handles the preset logic *after* getting feedback.
-        if value == 3 and self.servo_current_pos == 180:
-            messagebox.showinfo("Info", "Lid is already closed.")
-            return
-         # Turn LED off *before* any preset that moves the servo:
+        # Turn off LED *before* any preset that moves the servo (always safe)
         self.send_led_command(0)
-        # Schedule actual preset command after a delay
-        self.master.after(500, self._send_preset_command_delayed, value)
+        # Schedule sending servo after a delay
+        self.master.after(500, self._send_preset_after_led, value)
 
-    def _send_preset_command_delayed(self, value):
-        # Sends preset command after led is turned off
+    def _send_preset_after_led(self,value):
+        # Send the preset command after turning off the led
         self.send_command(f"PRESET:{value}")
 
     def send_led_command_wrapper(self, value=None):
-        """Wrapper to check servo position before sending LED command."""
+        """Sends the LED command directly, without any prompts."""
         if value is None:
             value = self.led_var.get()
-
-        if value == 0:  # Always allow turning the LED OFF
-            self.send_led_command(0)
-            return
-
-        # Request current position *and* set the waiting flag
-        self.send_command("GET:SERVO")  # Get current servo position
-        # Use after() to schedule the logic after getting feedback
-        self.master.after(200, self._send_led_command_after_get, value)
-
-    def _send_led_command_after_get(self, value):
-        """Helper function to handle LED command logic after getting servo feedback."""
-        if self.servo_current_pos == 180:
-            self.send_led_command(value)
-        else:
-            response = messagebox.askyesno(
-                "Warning",
-                "The lid is open. Do you want to turn on the flat panel?"
-            )
-            if response:
-                self.send_led_command(value)  # Turn on LED
-            else:
-                self.led_var.set(0)  # Revert LED slider to 0 if "No"
-                self.send_led_command(0) # Turn off led
+        self.send_led_command(value)
 
     def send_led_command(self, value):
         """Sends an LED control command to the Arduino."""
@@ -270,7 +223,7 @@ class FlatFieldGUI:
             except (serial.SerialException, OSError) as e:
                 self.log_message(f"Error: {e}")
                 self.status_label.config(text=f"Error: {e}", fg="red")
-                self.connect_serial()
+                self.connect_serial() # Attempt reconnection
 
     def receive_data(self):
         buffer = ""
@@ -288,9 +241,9 @@ class FlatFieldGUI:
                 except (serial.SerialException, OSError) as e:
                     self.log_message(f"Error: {e}")
                     self.status_label.config(text=f"Error: {e}", fg="red")
-                    self.connect_serial()
+                    self.connect_serial()  # Attempt reconnection
                     return
-                time.sleep(0.01)
+                time.sleep(0.01) # Short delay
 
     def process_received_line(self, line):
         self.log_message(f"Received: {line}")
@@ -307,12 +260,32 @@ class FlatFieldGUI:
                         self.servo_var.set(value)  # Update slider IMMEDIATELY
                         self.servo_current_pos = value  # Update current position
                         self.servo_feedback_label.config(text=f"Last Servo Pos: {value}")
-                        self.servo_var.set(servo_val)
-                        self.servo_current_pos = servo_val
-                        self.led_var.set(led_val)
-                        self.led_current_brightness = led_val
-                        self.servo_feedback_label.config(text=f"Last Servo Pos: {servo_val}")
-                        self.led_feedback_label.config(text=f"Last LED Brightness: {led_val}")
+
+                    except ValueError:
+                        self.log_message(f"Invalid servo value: {value_str}")
+
+                elif command == "LED":
+                    try:
+                        value = int(value_str)
+                        self.led_var.set(value)  # Update slider IMMEDIATELY
+                        self.led_current_brightness = value  # Update current brightness
+                        self.led_feedback_label.config(text=f"Last LED Brightness: {value}")
+                    except ValueError:
+                        self.log_message(f"Invalid LED value: {value_str}")
+
+                elif command == "PRESET":
+                    try:
+                        preset_num = int(parts[1])
+                        # Handle both OPEN_OFF and other presets consistently
+                        if len(parts) > 3: # If preset details are in feedback
+                            servo_val = int(parts[3])
+                            led_val = int(parts[5])
+                            self.servo_var.set(servo_val)
+                            self.servo_current_pos = servo_val
+                            self.led_var.set(led_val)
+                            self.led_current_brightness = led_val
+                            self.servo_feedback_label.config(text=f"Last Servo Pos: {servo_val}")
+                            self.led_feedback_label.config(text=f"Last LED Brightness: {led_val}")
 
                     except (ValueError, IndexError) as e:
                         print(f"Error processing preset feedback: {e}, Line:{line}")
