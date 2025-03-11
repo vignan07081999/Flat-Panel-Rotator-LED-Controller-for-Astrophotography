@@ -14,9 +14,8 @@ class FlatFieldGUI:
         # --- Serial Port Configuration ---
         self.port = None
         self.serialInst = serial.Serial()
-        # Remove initializations here.  We'll get initial values from Arduino.
-        self.servo_current_pos = None
-        self.led_current_brightness = None
+        self.servo_current_pos = None  # Store current servo position
+        self.led_current_brightness = None # Store the led brightness
 
         # --- Serial Port Selection ---
         self.port_label = tk.Label(master, text="Select Serial Port:")
@@ -38,7 +37,6 @@ class FlatFieldGUI:
         self.servo_label.grid(row=1, column=0, sticky=tk.W)
 
         self.servo_var = tk.IntVar()
-        # We'll set the slider position when we get feedback from Arduino.
         self.servo_scale = tk.Scale(master, from_=0, to=180, orient=tk.HORIZONTAL,
                                      variable=self.servo_var)
         self.servo_scale.grid(row=1, column=1, sticky=tk.W + tk.E)
@@ -57,6 +55,7 @@ class FlatFieldGUI:
         self.servo_open_button = tk.Button(self.servo_preset_frame, text="Open", command=self.open_lid)
         self.servo_open_button.pack(side=tk.LEFT, padx=5)
 
+        # Changed close preset value and text:
         self.servo_close_button = tk.Button(self.servo_preset_frame, text="Close (180)",
                                            command=lambda: self.send_preset_command(3))
         self.servo_close_button.pack(side=tk.LEFT, padx=5)
@@ -111,7 +110,8 @@ class FlatFieldGUI:
 
     def check_servo_limits(self, value):
         """Checks servo limits, prompts, and sends command or reverts slider."""
-        if 0 <= value <= 49 or 176 <= value <= 180:
+        # Modified limit check: only prompt for 0-49
+        if 0 <= value <= 49:
             response = messagebox.askyesno(
                 "Warning",
                 "Are you sure you want to turn outside the limits?\nThis is for testing only."
@@ -197,7 +197,7 @@ class FlatFieldGUI:
 
     def send_preset_command(self, value):
          # Check if the lid is *reliably* already closed.
-        if value == 3 and self.servo_current_pos == 175:
+        if value == 3 and self.servo_current_pos == 180:  #Now checking for 180
             messagebox.showinfo("Info", "Lid is already closed.")
             return
         self.send_command(f"PRESET:{value}")
