@@ -73,7 +73,7 @@ void processCommand(String command) {
     String commandValueStr = command.substring(separatorIndex + 1);
 
     if (commandType == "SERVO") {
-        int commandValue = commandValueStr.toInt();
+        int commandValue = commandValueStr.toInt(); // Convert to int only for SERVO
         if (commandValue >= 0 && commandValue <= 180) {
             moveServo(servoPos, commandValue);  // Use moveServo for controlled movement
             servoPos = commandValue; // Update *after* movement
@@ -83,8 +83,9 @@ void processCommand(String command) {
         } else {
             Serial.println("ERR:Invalid servo position");
         }
+
     } else if (commandType == "LED") {
-        int commandValue = commandValueStr.toInt();
+        int commandValue = commandValueStr.toInt(); // Convert to int only for LED
         if (commandValue >= 0 && commandValue <= ledBrightnessMax) {
             ledBrightness = commandValue;
             analogWrite(ledPin, ledBrightness);
@@ -94,8 +95,9 @@ void processCommand(String command) {
         } else {
             Serial.println("ERR:Invalid LED brightness");
         }
-    } else if (commandType == "PRESET") {
-       if (commandValueStr == "OPEN_OFF") {
+
+    } else if (commandType == "PRESET") { // Handle PRESET commands
+        if (commandValueStr == "OPEN_OFF") {
             moveServo(servoPos, 50); // Open to position 50
             servoPos = 50;
             ledBrightness = 0; // Turn LED off
@@ -106,10 +108,10 @@ void processCommand(String command) {
             Serial.println();
         }
          else {
-          applyPreset(commandValueStr.toInt());
+          applyPreset(commandValueStr.toInt()); //Handle other presets
         }
-
-    } else if (commandType == "GET") {
+    }
+      else if (commandType == "GET") {
         if (commandValueStr == "SERVO") {
             Serial.print("OK:SERVO:");
             Serial.println(servoPos);  // Send current servo position
@@ -120,7 +122,8 @@ void processCommand(String command) {
             Serial.println("ERR:Invalid GET parameter");
         }
     } else {
-        Serial.println("ERR:Unknown command");
+        Serial.print("ERR:Unknown command: ");
+        Serial.println(command);
     }
 }
 
@@ -148,31 +151,29 @@ void applyPreset(int presetNumber) {
     switch (presetNumber) {
         case 1: // Not Used - Handled by OPEN_OFF
             return;
-        case 2: // "Medium"
+        case 2: // "Medium" (Optional - You can add functionality here)
             newServoPos = 90;
             ledBrightness = 128;
-            moveServo(servoPos, newServoPos);
+             moveServo(servoPos, newServoPos);
             servoPos = newServoPos;
             analogWrite(ledPin, ledBrightness);
             EEPROM.write(servoPosAddress, servoPos);
             EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:2:SERVO:");
+            Serial.print("OK:PRESET:2:SERVO:");  // Give specific feedback
             Serial.print(servoPos);
             Serial.print(":LED:");
             Serial.println(ledBrightness);
             break;
         case 3: // "Close"
-            newServoPos = 180;
-            ledBrightness = 0;
+            newServoPos = 180; // Set to 180 degrees
+            ledBrightness = 0; // Turn LED off
             moveServo(servoPos, newServoPos);
             servoPos = newServoPos;
             analogWrite(ledPin, ledBrightness);
             EEPROM.write(servoPosAddress, servoPos);
             EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:3:SERVO:");
-            Serial.print(servoPos);
-            Serial.print(":LED:");
-            Serial.println(ledBrightness);
+            Serial.print("OK:PRESET:3:SERVO:180:LED:0"); //Consistent feedback
+            Serial.println();
             break;
 
         default:
@@ -186,7 +187,7 @@ void serialEvent() {
         char inChar = (char)Serial.read();
         inputString += inChar;
         if (inChar == '\n') {
-            stringComplete = True;
+            stringComplete = true;
         }
     }
 }
