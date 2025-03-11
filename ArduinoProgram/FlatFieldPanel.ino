@@ -41,44 +41,50 @@ void setup() {
     TCCR2B = TCCR2B & B11111000 | B00000001; // Change PWM frequency on Pin 3
 
     Serial.begin(baudRate);
-    inputString.reserve(20);
+    inputString.reserve(20); // Reserve space for input string
 
-    // --- DTR Reset Prevention ---
-    delay(2000); // Delay to allow for serial connection stabilization
+    // --- DTR Reset Prevention (Optional but Recommended)---
+    // On some Arduinos (like Uno), connecting via serial resets the board.
+    // This delay gives the Arduino time to finish booting before the
+    // Python script starts sending commands.  Adjust as needed.
+    delay(2000); // Wait for serial connection to stabilize
 }
 
 void loop() {
-    serialEvent();
+    serialEvent();  // Call serialEvent in loop()
 
     if (stringComplete) {
         processCommand(inputString);
-        inputString = "";
+        inputString = ""; // Clear the string
         stringComplete = false;
     }
 }
 
+
 void processCommand(String command) {
     int separatorIndex = command.indexOf(':');
-    if (separatorIndex == -1) return;
+    if (separatorIndex == -1) {
+        // Invalid command format.  Send an error response.
+        Serial.println("ERR:Invalid command format");
+        return;
+    }
 
     String commandType = command.substring(0, separatorIndex);
     String commandValueStr = command.substring(separatorIndex + 1);
-    // No need to convert to int here, as some commands have string values
 
     if (commandType == "SERVO") {
-        int commandValue = commandValueStr.toInt(); // Convert to int only for SERVO
+        int commandValue = commandValueStr.toInt();
         if (commandValue >= 0 && commandValue <= 180) {
-            moveServo(servoPos, commandValue);
-            servoPos = commandValue; // Update after movement
+            moveServo(servoPos, commandValue);  // Use moveServo for controlled movement
+            servoPos = commandValue; // Update *after* movement
             EEPROM.write(servoPosAddress, servoPos);
             Serial.print("OK:SERVO:");
             Serial.println(servoPos);
         } else {
             Serial.println("ERR:Invalid servo position");
         }
-
     } else if (commandType == "LED") {
-        int commandValue = commandValueStr.toInt(); // Convert to int only for LED
+        int commandValue = commandValueStr.toInt();
         if (commandValue >= 0 && commandValue <= ledBrightnessMax) {
             ledBrightness = commandValue;
             analogWrite(ledPin, ledBrightness);
@@ -88,33 +94,53 @@ void processCommand(String command) {
         } else {
             Serial.println("ERR:Invalid LED brightness");
         }
-
-    } else if (commandType == "PRESET") { // Handle PRESET commands
-        if (commandValueStr == "OPEN_OFF") {
+    } else if (commandType == "PRESET") {
+       if (commandValueStr == "OPEN_OFF") {
             moveServo(servoPos, 50); // Open to position 50
             servoPos = 50;
             ledBrightness = 0; // Turn LED off
             analogWrite(ledPin, ledBrightness);
             EEPROM.write(servoPosAddress, servoPos);
             EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:OPEN_OFF:SERVO:50:LED:0"); // Consistent feedback
+            Serial.print("OK:PRESET:1:SERVO:50:LED:0"); // Consistent feedback
             Serial.println();
         }
          else {
-          applyPreset(commandValueStr.toInt()); //Handle other presets
+          applyPreset(commandValueStr.toInt());
         }
-    }
-      else if (commandType == "GET") {
+
+    } else if (commandType == "GET") {
         if (commandValueStr == "SERVO") {
             Serial.print("OK:SERVO:");
-            Serial.println(servoPos);
+            Serial.println(servoPos);  // Send current servo position
         } else if (commandValueStr == "LED") {
             Serial.print("OK:LED:");
-            Serial.println(ledBrightness);
+            Serial.println(ledBrightness);  // Send current LED brightness
+        } else {
+            Serial.println("ERR:Invalid GET parameter");
         }
     } else {
-        Serial.print("ERR:Unknown command: ");
-        Serial.println(command);
+        Serial.println("ERR:Unknown command");
+    }
+}
+
+
+void moveServo(int startPos, int endPos) {
+    int step = (endPos > startPos) ? 1 : -1;
+    int increment = abs(endPos - startPos) * (100 - servoSpeed) / 100;
+    if (increment == 0) increment = 1; // Ensure at least one step
+
+    for (int pos = startPos; ; pos += step) {
+        myServo.write(pos);
+        delay(servoDelay);
+
+        if (abs(pos - startPos) >= increment || pos == endPos) {
+            myServo.write(pos); // Ensure final position is reached
+        }
+
+        if (pos == endPos) {
+            break; // Exit loop when target position is reached
+        }
     }
 }
 void applyPreset(int presetNumber) {
@@ -122,29 +148,31 @@ void applyPreset(int presetNumber) {
     switch (presetNumber) {
         case 1: // Not Used - Handled by OPEN_OFF
             return;
-        case 2: // "Medium" (Optional - You can add functionality here)
-            newServoPos = 90; // Example: Set to 90 degrees
-            ledBrightness = 128; // Example: Set to half brightness
+        case 2: // "Medium"
+            newServoPos = 90;
+            ledBrightness = 128;
             moveServo(servoPos, newServoPos);
             servoPos = newServoPos;
             analogWrite(ledPin, ledBrightness);
             EEPROM.write(servoPosAddress, servoPos);
             EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:2:SERVO:"); // Consistent feedback
+            Serial.print("OK:PRESET:2:SERVO:");
             Serial.print(servoPos);
             Serial.print(":LED:");
             Serial.println(ledBrightness);
             break;
         case 3: // "Close"
-            newServoPos = 180; // Set to 180 degrees
-            ledBrightness = 0; // Turn LED off
+            newServoPos = 180;
+            ledBrightness = 0;
             moveServo(servoPos, newServoPos);
             servoPos = newServoPos;
             analogWrite(ledPin, ledBrightness);
             EEPROM.write(servoPosAddress, servoPos);
             EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:3:SERVO:180:LED:0"); // Consistent feedback
-            Serial.println();
+            Serial.print("OK:PRESET:3:SERVO:");
+            Serial.print(servoPos);
+            Serial.print(":LED:");
+            Serial.println(ledBrightness);
             break;
 
         default:
@@ -152,32 +180,13 @@ void applyPreset(int presetNumber) {
             return;
     }
 }
-
-void moveServo(int startPos, int endPos) {
-    int step = (endPos > startPos) ? 1 : -1;
-    int increment = abs(endPos - startPos) * (100 - servoSpeed) / 100;
-    if (increment == 0) increment = 1;
-
-    for (int pos = startPos; ; pos += step) {
-        myServo.write(pos);
-        delay(servoDelay);
-
-        if (abs(pos - startPos) >= increment || pos == endPos) {
-            myServo.write(pos);
-        }
-
-        if (pos == endPos) {
-            break;
-        }
-    }
-}
-
+// serialEvent() is crucial for non-blocking serial reading
 void serialEvent() {
     while (Serial.available()) {
         char inChar = (char)Serial.read();
         inputString += inChar;
         if (inChar == '\n') {
-            stringComplete = true;
+            stringComplete = True;
         }
     }
 }
