@@ -55,7 +55,6 @@ class FlatFieldGUI:
         self.servo_open_button = tk.Button(self.servo_preset_frame, text="Open", command=self.open_lid)
         self.servo_open_button.pack(side=tk.LEFT, padx=5)
 
-        # Changed close preset value and text:
         self.servo_close_button = tk.Button(self.servo_preset_frame, text="Close (180)",
                                            command=lambda: self.send_preset_command(3))
         self.servo_close_button.pack(side=tk.LEFT, padx=5)
@@ -154,42 +153,51 @@ class FlatFieldGUI:
         self.log_message("Serial ports refreshed.")
 
     def connect_serial(self, event=None):
-      if self.serialInst.is_open:
-          self.serialInst.close()
-          self.status_label.config(text="Disconnected", fg="red")
-          self.connect_button.config(text="Connect")
-          self.receive_thread_running = False
-          # Clear the feedback labels when disconnecting.
-          self.servo_feedback_label.config(text="Last Servo Pos: N/A")
-          self.led_feedback_label.config(text="Last LED Brightness: N/A")
-          return
+        if self.serialInst.is_open:
+            self.serialInst.close()
+            self.status_label.config(text="Disconnected", fg="red")
+            self.connect_button.config(text="Connect")
+            self.receive_thread_running = False
+            # Clear feedback labels
+            self.servo_feedback_label.config(text="Last Servo Pos: N/A")
+            self.led_feedback_label.config(text="Last LED Brightness: N/A")
+            return
 
-      selected_port = self.port_combobox.get()
-      if not selected_port:
-          return
+        selected_port = self.port_combobox.get()
+        if not selected_port:
+            return
 
-      try:
-          self.serialInst = serial.Serial(port=selected_port, baudrate=9600, timeout=1)
-          self.log_message(f"Connecting to {selected_port}...")
-          self.status_label.config(text=f"Connected to {selected_port}", fg="green")
-          self.connect_button.config(text="Disconnect")
-          self.serialInst.dtr = False
-          time.sleep(0.1)
-          self.serialInst.reset_input_buffer()
-          self.serialInst.dtr = True
-          self.receive_thread_running = True
-          self.receive_thread.start()
+        try:
+            # 1. Create the serial object *without* immediately opening the port
+            self.serialInst = serial.Serial(port=selected_port, baudrate=9600, timeout=1, write_timeout=1) # Add write_timeout
+            self.log_message(f"Connecting to {selected_port}...")
 
-          #  Get initial values *after* starting the thread.
-          self.send_command("GET:SERVO")  # Request servo position
-          self.send_command("GET:LED")    # Request LED brightness
+            # 2. Explicitly control DTR *before* opening the port
+            self.serialInst.dtr = False  # Keep DTR LOW
+            time.sleep(0.1)             # Short delay (optional, but good practice)
+            self.serialInst.open()      # *Now* open the port
+            time.sleep(2.0)  # **CRITICAL DELAY:** Wait for Arduino to boot
+            # ^^^  This 2-second delay is the most important change.
 
-      except serial.SerialException as e:
-          self.log_message(f"Error: {e}")
-          self.status_label.config(text=f"Error: {e}", fg="red")
-          self.connect_button.config(text="Connect")
+            # 3. Clear the input buffer (get rid of any startup garbage)
+            self.serialInst.reset_input_buffer()
 
+            # 4. Now it's safe to set DTR high (or low, if your board needs it)
+            self.serialInst.dtr = True  # Set DTR HIGH (normal operation)
 
+            self.status_label.config(text=f"Connected to {selected_port}", fg="green")
+            self.connect_button.config(text="Disconnect")
+            self.receive_thread_running = True
+            self.receive_thread.start()
+
+            # 5. *After* the delay and DTR handling, get initial values:
+            self.send_command("GET:SERVO")
+            self.send_command("GET:LED")
+
+        except serial.SerialException as e:
+            self.log_message(f"Error: {e}")
+            self.status_label.config(text=f"Error: {e}", fg="red")
+            self.connect_button.config(text="Connect")
 
     def send_servo_command(self, value):
         self.send_command(f"SERVO:{value}")
@@ -217,6 +225,10 @@ class FlatFieldGUI:
                 self.log_message(f"Serial Error: {e}")
                 self.status_label.config(text=f"Serial Error: {e}", fg="red")
                 self.connect_serial()
+            except OSError as e:  # Catch OSError
+                self.log_message(f"OS Error: {e}")
+                self.status_label.config(text=f"OS Error: {e}", fg="red")
+                self.connect_serial() # Try reconnect
 
     def receive_data(self):
         buffer = ""
