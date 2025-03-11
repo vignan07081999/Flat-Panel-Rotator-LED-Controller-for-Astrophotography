@@ -57,7 +57,7 @@ class FlatFieldGUI:
         self.servo_open_button = tk.Button(self.servo_preset_frame, text="Open", command=self.open_lid)
         self.servo_open_button.pack(side=tk.LEFT, padx=5)
 
-        self.servo_close_button = tk.Button(self.servo_preset_frame, text="Close (175)",
+        self.servo_close_button = tk.Button(self.servo_preset_frame, text="Close (180)",
                                            command=lambda: self.send_preset_command(3))
         self.servo_close_button.pack(side=tk.LEFT, padx=5)
 
