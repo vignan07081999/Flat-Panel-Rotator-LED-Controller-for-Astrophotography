@@ -1,193 +1,223 @@
+/*
+ * Arduino_Firmware_Enhanced_Limited_Pins_StdPWM.ino
+ * Based on code Copyright (C) 2022 - Present, Julien Lecomte
+ * Modifications for LED control, arbitrary position, Python GUI feedback,
+ * limited close angle (min 20 degrees), specified pins (Servo:6, LED:9),
+ * using STANDARD LED PWM frequency due to Timer1/Servo conflict.
+ * Licensed under the MIT License.
+ */
+
 #include <Servo.h>
-#include <EEPROM.h>
 
-// --- Pin Definitions ---
-const int servoPin = 9;      // Servo signal pin
-const int ledPin = 3;       // LED strip (Use pin 3 for higher PWM freq)
+// --- Configuration ---
+#define SERVO_PIN 6      // Servo pin
+#define LED_PIN 9        // <-- CHANGED LED pin back to 9
+#define MIN_ANGLE 20     // Minimum allowed angle (Closed Position)
+#define MAX_ANGLE 180    // Maximum allowed angle (Open Position)
+#define BAUD_RATE 57600
+#define MOVEMENT_DELAY 20 // Milliseconds delay between servo steps
 
-// --- Servo and LED Variables ---
-Servo myServo;
-int servoPos = 90;          // Initial position for servo
-int ledBrightness = 0;     //Initial LED Brightness
-int ledBrightnessMax = 255;
+// --- Communication Protocol (Commands, Results, Errors remain the same) ---
+constexpr auto DEVICE_GUID = "b45ba2c9-f554-4b4e-a43c-10605ca3b84d";
 
-// --- Servo Speed Control ---
-const int servoSpeed = 40; // Percentage of full speed (1-100)
-const int servoDelay = 10; // Delay in milliseconds between steps
+constexpr auto COMMAND_PING = "COMMAND:PING";
+constexpr auto COMMAND_INFO = "COMMAND:INFO";
+constexpr auto COMMAND_GETSTATE = "COMMAND:GETSTATE";
+constexpr auto COMMAND_OPEN = "COMMAND:OPEN";
+constexpr auto COMMAND_CLOSE = "COMMAND:CLOSE";
+constexpr auto COMMAND_SETPOS_PREFIX = "COMMAND:SETPOS:";
+constexpr auto COMMAND_SETLED_PREFIX = "COMMAND:SETLED:";
+constexpr auto COMMAND_GETSTATUS = "COMMAND:GETSTATUS";
 
-// --- EEPROM Addresses ---
-const int servoPosAddress = 0;
-const int ledBrightnessAddress = 2;
+constexpr auto RESULT_PING = "RESULT:PING:OK:";
+constexpr auto RESULT_INFO = "RESULT:DarkSkyGeek's Telescope Cover Firmware v1.4-Pin9-StdPWM"; // Updated version
+constexpr auto RESULT_STATE_UNKNOWN = "RESULT:STATE:UNKNOWN";
+constexpr auto RESULT_STATE_OPEN = "RESULT:STATE:OPEN";
+constexpr auto RESULT_STATE_CLOSED = "RESULT:STATE:CLOSED";
+constexpr auto RESULT_STATE_MOVING = "RESULT:STATE:MOVING";
+constexpr auto RESULT_STATUS_PREFIX = "RESULT:STATUS:";
+constexpr auto RESULT_OK = "RESULT:OK";
 
-// --- Serial Communication ---
-const int baudRate = 9600;
-String inputString = "";
-bool stringComplete = false;
+constexpr auto ERROR_INVALID_COMMAND = "ERROR:INVALID_COMMAND";
+constexpr auto ERROR_INVALID_ARGUMENT = "ERROR:INVALID_ARGUMENT";
+constexpr auto ERROR_OUT_OF_RANGE = "ERROR:OUT_OF_RANGE";
 
+// --- Global Variables ---
+Servo servo;
+int currentAngle = MIN_ANGLE;
+int targetAngle = MIN_ANGLE;
+int currentLedBrightness = 0; // Stores the desired brightness (0-255) set by user
+bool isMoving = false;
+
+// --- Setup ---
 void setup() {
-    myServo.attach(servoPin);
-    pinMode(ledPin, OUTPUT);
+    // Initialize serial port
+    Serial.begin(BAUD_RATE);
+    while (!Serial) { ; }
+    Serial.flush();
 
-    // --- Load settings from EEPROM ---
-    servoPos = EEPROM.read(servoPosAddress);
-    if (servoPos < 0 || servoPos > 180) servoPos = 90;
-    myServo.write(servoPos);
+    // --- Standard PWM Frequency on Pin 9 ---
+    // Pin 9 uses Timer1 for PWM. Changing Timer1 frequency conflicts
+    // with the standard Servo library. Therefore, we do NOT modify
+    // timer registers here and use the default PWM frequency (~490Hz).
 
-    ledBrightness = EEPROM.read(ledBrightnessAddress);
-    if (ledBrightness < 0 || ledBrightness > ledBrightnessMax) ledBrightness = 0;
-    analogWrite(ledPin, ledBrightness);
+    // Initialize LED pin
+    pinMode(LED_PIN, OUTPUT);
+    setLed(0); // Start with LED off
 
-    // --- Increase PWM Frequency (for pin 3 , Timer 2) ---
-    TCCR2B = TCCR2B & B11111000 | B00000001; // Change PWM frequency on Pin 3
+    // Initialize servo on the correct pin
+    servo.attach(SERVO_PIN);
+    servo.write(currentAngle); // Move to initial MIN_ANGLE position explicitly
+    delay(500);
 
-    Serial.begin(baudRate);
-    inputString.reserve(20); // Reserve space for input string
-
-    // --- DTR Reset Prevention (Optional but Recommended)---
-    // On some Arduinos (like Uno), connecting via serial resets the board.
-    // This delay gives the Arduino time to finish booting before the
-    // Python script starts sending commands.  Adjust as needed.
-    delay(2000); // Wait for serial connection to stabilize
+    sendStatus(); // Send initial status
 }
 
+// --- Main Loop ---
 void loop() {
-    serialEvent();  // Call serialEvent in loop()
+    if (Serial.available() > 0) {
+        String command = Serial.readStringUntil('\n');
+        command.trim();
 
-    if (stringComplete) {
-        processCommand(inputString);
-        inputString = ""; // Clear the string
-        stringComplete = false;
+        if (command == COMMAND_PING) handlePing();
+        else if (command == COMMAND_INFO) sendFirmwareInfo();
+        else if (command == COMMAND_GETSTATE) sendAscomState();
+        else if (command == COMMAND_GETSTATUS) sendStatus();
+        else if (command == COMMAND_OPEN) moveToPosition(MAX_ANGLE);
+        else if (command == COMMAND_CLOSE) moveToPosition(MIN_ANGLE);
+        else if (command.startsWith(COMMAND_SETPOS_PREFIX)) handleSetPosition(command);
+        else if (command.startsWith(COMMAND_SETLED_PREFIX)) handleSetLed(command);
+        else if (command.length() > 0) handleInvalidCommand(command);
     }
 }
 
+// --- Command Handlers (handlePing, sendFirmwareInfo, sendAscomState, sendStatus are same) ---
+void handlePing() {
+    Serial.print(RESULT_PING);
+    Serial.println(DEVICE_GUID);
+}
 
-void processCommand(String command) {
-    int separatorIndex = command.indexOf(':');
-    if (separatorIndex == -1) {
-        // Invalid command format.  Send an error response.
-        Serial.println("ERR:Invalid command format");
+void sendFirmwareInfo() {
+    Serial.println(RESULT_INFO);
+}
+
+void sendAscomState() {
+    int tolerance = 5;
+    if (isMoving) Serial.println(RESULT_STATE_MOVING);
+    else if (abs(currentAngle - MIN_ANGLE) < tolerance) Serial.println(RESULT_STATE_CLOSED);
+    else if (abs(currentAngle - MAX_ANGLE) < tolerance) Serial.println(RESULT_STATE_OPEN);
+    else Serial.println(RESULT_STATE_OPEN);
+}
+
+void sendStatus() {
+    Serial.print(RESULT_STATUS_PREFIX);
+    Serial.print(currentAngle);
+    Serial.print(":");
+    Serial.println(currentLedBrightness); // Report the stored brightness
+}
+
+void handleSetPosition(String command) {
+    String arg = command.substring(strlen(COMMAND_SETPOS_PREFIX));
+    bool argOk = false;
+    for (int i = 0; i < arg.length(); i++) { if (isDigit(arg.charAt(i))) { argOk = true; break; }}
+
+    if (argOk) {
+        int requested_angle = arg.toInt();
+        moveToPosition(requested_angle);
+    } else {
+        Serial.println(ERROR_INVALID_ARGUMENT);
+    }
+}
+
+void handleSetLed(String command) {
+    String arg = command.substring(strlen(COMMAND_SETLED_PREFIX));
+    bool argOk = false;
+    for (int i = 0; i < arg.length(); i++) { if (isDigit(arg.charAt(i))) { argOk = true; break; }}
+
+    if (argOk) {
+        int brightness = arg.toInt();
+        brightness = constrain(brightness, 0, 255);
+
+        currentLedBrightness = brightness;
+        // Serial.print("Stored LED Brightness: "); Serial.println(currentLedBrightness); // Debug
+
+        // Apply brightness physically only if closed and not moving
+        if (!isMoving && abs(currentAngle - MIN_ANGLE) < 5) {
+             // Serial.print("Applying LED Brightness: "); Serial.println(currentLedBrightness); // Debug
+             setLed(currentLedBrightness);
+        } else {
+             // Serial.println("Cover not closed or is moving, ensuring LED is off."); // Debug
+             setLed(0);
+        }
+        Serial.println(RESULT_OK);
+        sendStatus();
+    } else {
+        Serial.println(ERROR_INVALID_ARGUMENT);
+    }
+}
+
+void handleInvalidCommand(String command) {
+    Serial.print(ERROR_INVALID_COMMAND);
+    Serial.print(":");
+    Serial.println(command);
+}
+
+
+// --- Core Functions ---
+
+// Sets the physical LED brightness using analogWrite on the specified LED_PIN
+void setLed(int brightness) {
+    analogWrite(LED_PIN, brightness);
+}
+
+// Moves the servo to the target position step-by-step
+void moveToPosition(int target) {
+    int constrained_target = constrain(target, MIN_ANGLE, MAX_ANGLE);
+
+    if (target != constrained_target && (target < MIN_ANGLE || target > MAX_ANGLE)) {
+        Serial.print(ERROR_OUT_OF_RANGE);
+        Serial.print(": Requested="); Serial.print(target);
+        Serial.print(", Actual="); Serial.println(constrained_target);
+    }
+
+    targetAngle = constrained_target;
+
+    if (targetAngle == currentAngle) {
+        if (abs(currentAngle - MIN_ANGLE) < 5) { setLed(currentLedBrightness); }
+        else { setLed(0); }
+        sendStatus();
         return;
     }
 
-    String commandType = command.substring(0, separatorIndex);
-    String commandValueStr = command.substring(separatorIndex + 1);
+    isMoving = true;
+    setLed(0); // Turn LED OFF during movement
+    Serial.println(RESULT_STATE_MOVING);
 
-    if (commandType == "SERVO") {
-        int commandValue = commandValueStr.toInt(); // Convert to int only for SERVO
-        if (commandValue >= 0 && commandValue <= 180) {
-            moveServo(servoPos, commandValue);  // Use moveServo for controlled movement
-            servoPos = commandValue; // Update *after* movement
-            EEPROM.write(servoPosAddress, servoPos);
-            Serial.print("OK:SERVO:");
-            Serial.println(servoPos);
-        } else {
-            Serial.println("ERR:Invalid servo position");
-        }
-
-    } else if (commandType == "LED") {
-        int commandValue = commandValueStr.toInt(); // Convert to int only for LED
-        if (commandValue >= 0 && commandValue <= ledBrightnessMax) {
-            ledBrightness = commandValue;
-            analogWrite(ledPin, ledBrightness);
-            EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:LED:");
-            Serial.println(ledBrightness);
-        } else {
-            Serial.println("ERR:Invalid LED brightness");
-        }
-
-    } else if (commandType == "PRESET") { // Handle PRESET commands
-        if (commandValueStr == "OPEN_OFF") {
-            moveServo(servoPos, 50); // Open to position 50
-            servoPos = 50;
-            ledBrightness = 0; // Turn LED off
-            analogWrite(ledPin, ledBrightness);
-            EEPROM.write(servoPosAddress, servoPos);
-            EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:1:SERVO:50:LED:0"); // Consistent feedback
-            Serial.println();
-        }
-         else {
-          applyPreset(commandValueStr.toInt()); //Handle other presets
-        }
-    }
-      else if (commandType == "GET") {
-        if (commandValueStr == "SERVO") {
-            Serial.print("OK:SERVO:");
-            Serial.println(servoPos);  // Send current servo position
-        } else if (commandValueStr == "LED") {
-            Serial.print("OK:LED:");
-            Serial.println(ledBrightness);  // Send current LED brightness
-        } else {
-            Serial.println("ERR:Invalid GET parameter");
+    // Gradual movement loop
+    if (targetAngle > currentAngle) {
+        for (int pos = currentAngle + 1; pos <= targetAngle; pos++) {
+            servo.write(pos);
+            currentAngle = pos;
+            delay(MOVEMENT_DELAY);
         }
     } else {
-        Serial.print("ERR:Unknown command: ");
-        Serial.println(command);
-    }
-}
-
-
-void moveServo(int startPos, int endPos) {
-    int step = (endPos > startPos) ? 1 : -1;
-    int increment = abs(endPos - startPos) * (100 - servoSpeed) / 100;
-    if (increment == 0) increment = 1; // Ensure at least one step
-
-    for (int pos = startPos; ; pos += step) {
-        myServo.write(pos);
-        delay(servoDelay);
-
-        if (abs(pos - startPos) >= increment || pos == endPos) {
-            myServo.write(pos); // Ensure final position is reached
-        }
-
-        if (pos == endPos) {
-            break; // Exit loop when target position is reached
+        for (int pos = currentAngle - 1; pos >= targetAngle; pos--) {
+            servo.write(pos);
+            currentAngle = pos;
+            delay(MOVEMENT_DELAY);
         }
     }
-}
-void applyPreset(int presetNumber) {
-    int newServoPos;
-    switch (presetNumber) {
-        case 1: // Not Used - Handled by OPEN_OFF
-            return;
-        case 2: // "Medium" (Optional - You can add functionality here)
-            newServoPos = 90;
-            ledBrightness = 128;
-             moveServo(servoPos, newServoPos);
-            servoPos = newServoPos;
-            analogWrite(ledPin, ledBrightness);
-            EEPROM.write(servoPosAddress, servoPos);
-            EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:2:SERVO:");  // Give specific feedback
-            Serial.print(servoPos);
-            Serial.print(":LED:");
-            Serial.println(ledBrightness);
-            break;
-        case 3: // "Close"
-            newServoPos = 180; // Set to 180 degrees
-            ledBrightness = 0; // Turn LED off
-            moveServo(servoPos, newServoPos);
-            servoPos = newServoPos;
-            analogWrite(ledPin, ledBrightness);
-            EEPROM.write(servoPosAddress, servoPos);
-            EEPROM.write(ledBrightnessAddress, ledBrightness);
-            Serial.print("OK:PRESET:3:SERVO:180:LED:0"); //Consistent feedback
-            Serial.println();
-            break;
 
-        default:
-            Serial.println("ERR:Invalid preset number");
-            return;
+    isMoving = false;
+
+    // Set final LED state based on position
+    if (abs(currentAngle - MIN_ANGLE) < 5) {
+        // Serial.print("Movement finished at closed pos. Applying brightness: "); Serial.println(currentLedBrightness); // Debug
+        setLed(currentLedBrightness);
+    } else {
+        // Serial.println("Movement finished at open pos. Ensuring LED is off."); // Debug
+        setLed(0);
     }
-}
-// serialEvent() is crucial for non-blocking serial reading
-void serialEvent() {
-    while (Serial.available()) {
-        char inChar = (char)Serial.read();
-        inputString += inChar;
-        if (inChar == '\n') {
-            stringComplete = true;
-        }
-    }
+
+    sendStatus();
 }
